@@ -13,13 +13,20 @@ struct GapRequestScreen: View {
     let actions: any ScanActions
 
     @State private var cameraSize: CGSize = .zero
+    /// The open camera between the card and the actions, for the aim ring (`CameraChrome`).
+    @State private var cameraWindow = CameraWindow()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
-            CameraOverlays(state: state, highlight: state.gap)
+            CameraOverlays(state: state, highlight: state.gap, cameraWindow: cameraWindow)
+            if showsMeterPhoto, let meterPhoto {
+                // "Point at the meter like this.": the saved close-up, as on the walk (B-23).
+                SavedMeterPhoto(image: meterPhoto)
+                    .transition(.opacity)
+            }
             if state.gap?.isSatisfied == true {
                 SuccessBadge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -42,7 +49,9 @@ struct GapRequestScreen: View {
                 photoCount: state.captureCount,
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
-                isAutopilot: state.isAutopilot
+                isAutopilot: state.isAutopilot,
+                cameraWindow: cameraWindow,
+                aims: aims
             ) {
                 VStack(spacing: 10) {
                     if asking {
@@ -73,6 +82,7 @@ struct GapRequestScreen: View {
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.pin, value: state.gap?.isSatisfied)
+        .animation(.easeOut(duration: 0.2), value: showsMeterPhoto)
     }
 
     /// "Show my result", on every request the check sent back, even with one view left: the
@@ -93,7 +103,7 @@ struct GapRequestScreen: View {
                 Label("Show my result", systemImage: "checkmark.circle")
             }
             .buttonStyle(.secondary)
-            .accessibilityHint("Stops asking for views and shows your result. An installer will look at the parts you skip.")
+            .accessibilityHint("Stops asking for views and shows your result. An installer would need to look at the parts you skip.")
             .accessibilityIdentifier("action.showResult")
             .transition(.opacity)
         }
@@ -115,10 +125,24 @@ struct GapRequestScreen: View {
     /// so the hint doesn't promise the result; "Show my result" does.
     private var skipHint: String {
         switch followUps {
-        case 0: "Skips this view. An installer will look at this part instead."
-        case 1: "Skips this view and checks your scan again. An installer will look at this part instead."
-        default: "Skips this view and goes on to the next one. An installer will look at this part instead."
+        case 0: "Skips this view. An installer would need to look at this part instead."
+        case 1: "Skips this view and checks your scan again. An installer would need to look at this part instead."
+        default: "Skips this view and goes on to the next one. An installer would need to look at this part instead."
         }
+    }
+
+    /// The phone's own request for ground by a likely spot has the homeowner aim the camera, and
+    /// its second line only says why ("This might be a spot for the battery"), so it folds at the
+    /// largest text sizes (`CameraChrome.aims`). Every other request's second line is the action
+    /// or its extent: stepping back for ground further out, the walk out with its live "this
+    /// needs" reading or "tap I can't get there", tilting up to the roof or sky, and a server's
+    /// own words, which this screen can't judge. Nor the overhead question, a request already
+    /// seen, or coaching that replaces the request.
+    private var aims: Bool {
+        guard let gap = state.gap, !asking, !gap.isSatisfied else { return false }
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
+        if case .groundNearCandidate = gap.reason { return true }
+        return false
     }
 
     /// As on the walk: tracking problems and standing past an end replace the request, and the
@@ -127,12 +151,25 @@ struct GapRequestScreen: View {
     /// thanks" for as long as it did (field test 4.1, run 3).
     private var instruction: Instruction {
         if asking { return ScanCopy.overheadQuestion }
-        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching, meterPhoto: meterPhoto != nil) }
         guard let gap = state.gap else { return ScanCopy.withCoaching(ScanCopy.guidance(.gap), coaching) }
         if gap.isSatisfied {
             return Instruction(title: "Got it, thanks", detail: followUps > 0 ? "Updating your result." : "That's the view we needed.")
         }
         return ScanCopy.withCoaching(ScanCopy.gap(gap), coaching)
+    }
+
+    /// The meter close-up, shown with "Point at the meter like this." while the phone finds its
+    /// place again; nil when the close-up was skipped.
+    private var meterPhoto: CGImage? {
+        if case .captured(let image) = state.closeUp { return image }
+        return nil
+    }
+
+    /// The close-up shows only while the card says "Point at the meter like this.", not under
+    /// the overhead question, which outranks the coaching.
+    private var showsMeterPhoto: Bool {
+        meterPhoto != nil && instruction == ScanCopy.coaching(.relocalizing, meterPhoto: true)
     }
 
     /// The coaching on the card, marked with its symbol (`tone`). Once the view is in, the

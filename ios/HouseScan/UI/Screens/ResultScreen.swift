@@ -10,6 +10,7 @@ struct ResultScreen: View {
 
     @State private var revealed = false
     @State private var detailsExpanded = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let result = state.result {
@@ -31,11 +32,11 @@ struct ResultScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 20) {
-                    AnswerCard(result: result, sourceAvailable: state.spatialResultAvailable, revealed: revealed, actions: actions)
-                    if result.spot != nil, state.spotCheck?.answer == .somethingThere {
-                        Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
-                            .accessibilityIdentifier("result.spotRefused")
+                    if typeSize.isAccessibilitySize {
+                        badges(result)
                     }
+                    AnswerCard(result: result, sourceAvailable: state.spatialResultAvailable, revealed: revealed, actions: actions)
+                    spotNotices(result)
                     footnotes(result)
                         .padding(.horizontal, 4)
                     details(result)
@@ -60,6 +61,28 @@ struct ResultScreen: View {
 
     // MARK: Parts
 
+    /// What the homeowner said about this result's spot, and, apart from it, any other area of the
+    /// wall they couldn't check. The second follows the scan's records, not the spot, so it stays
+    /// when the answer after "I can't check this area" names no spot or another one.
+    @ViewBuilder
+    private func spotNotices(_ result: ResultPresentation) -> some View {
+        let answer = result.spot != nil ? state.spotCheck?.answer : nil
+        switch answer {
+        case .somethingThere:
+            Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
+                .accessibilityIdentifier("result.spotRefused")
+        case .cannotCheck:
+            Notice(symbol: "eye.slash", text: ScanCopy.spotNotChecked)
+                .accessibilityIdentifier("result.spotNotChecked")
+        case .clear, nil:
+            EmptyView()
+        }
+        if state.uncheckedAreaElsewhere {
+            Notice(symbol: "eye.slash", text: ScanCopy.scanNotChecked(besideSpotNotice: answer == .somethingThere || answer == .cannotCheck))
+                .accessibilityIdentifier("result.scanNotChecked")
+        }
+    }
+
     @ViewBuilder
     private func diorama(_ result: ResultPresentation) -> some View {
         ZStack(alignment: .topLeading) {
@@ -68,28 +91,37 @@ struct ResultScreen: View {
             } else {
                 Palette.canvas
             }
-            VStack(alignment: .leading, spacing: 6) {
-                ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
-                if result.isSample {
-                    // The same quiet pill as ModeBadge: the answer, not the test mode, is the
-                    // loudest thing on this screen.
-                    // One Text with the flask inline, built as ModeBadge is. As a Label with
-                    // fixedSize, the audit reported its Dynamic Type as partially unsupported.
-                    Text("\(Image(systemName: "flask.fill")) Sample result, not from the server")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Palette.chalk)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Palette.ink.opacity(0.7), in: .capsule)
-                        .accessibilityLabel("Sample result, not from the server")
-                        .accessibilityIdentifier("result.sampleBadge")
-                }
+            if !typeSize.isAccessibilitySize {
+                badges(result)
+                    .padding(14)
             }
-            .padding(14)
         }
         .frame(height: 340)
         .clipShape(.rect(bottomLeadingRadius: 28, bottomTrailingRadius: 28, style: .continuous))
         .ignoresSafeArea(edges: .top)
+    }
+
+    /// Over the model at the default sizes. At the accessibility sizes the two pills covered
+    /// most of it, so they sit above the answer card instead.
+    private func badges(_ result: ResultPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+            if result.isSample {
+                // The same quiet pill as ModeBadge: the answer, not the test mode, is the
+                // loudest thing on this screen.
+                // One Text with the flask inline, built as ModeBadge is. As a Label with
+                // fixedSize, the audit reported its Dynamic Type as partially unsupported.
+                Text("\(Image(systemName: "flask.fill")) Sample result, not from the server")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Palette.chalk)
+                    .padding(.horizontal, typeSize.isAccessibilitySize ? 14 : 8)
+                    .padding(.vertical, typeSize.isAccessibilitySize ? 8 : 4)
+                    // Wrapped onto two lines, a capsule's round ends cut into the text's corners.
+                    .background(Palette.ink.opacity(0.7), in: typeSize.isAccessibilitySize ? AnyShape(.rect(cornerRadius: 16, style: .continuous)) : AnyShape(.capsule))
+                    .accessibilityLabel("Sample result, not from the server")
+                    .accessibilityIdentifier("result.sampleBadge")
+            }
+        }
     }
 
     /// Plain small print, never boxes: none of it changes what the homeowner does next.
@@ -120,6 +152,11 @@ struct ResultScreen: View {
             .accessibilityIdentifier(id)
     }
 
+    /// The checks whose card line offers the camera, so Details says the same as the card.
+    private func photoOffered(_ result: ResultPresentation) -> Set<String> {
+        Set(result.checks.filter { result.offeredView(for: $0, sourceAvailable: state.spatialResultAvailable) != nil }.map(\.id))
+    }
+
     private func details(_ result: ResultPresentation) -> some View {
         DisclosureGroup(isExpanded: $detailsExpanded) {
             VStack(alignment: .leading, spacing: 22) {
@@ -131,7 +168,7 @@ struct ResultScreen: View {
                         .accessibilityIdentifier("result.summary")
                 }
                 if !result.checks.isEmpty {
-                    ChecksList(checks: result.checks)
+                    ChecksList(checks: result.checks, photoOffered: photoOffered(result))
                 }
                 if !result.missing.isEmpty {
                     MissingList(missing: result.missing, checks: result.checks, sourceAvailable: state.spatialResultAvailable, actions: actions)
@@ -297,13 +334,12 @@ private struct AnswerCard: View {
     private func line(_ row: CheckRow) -> some View {
         // After a reject, the line above already gave the nearest spot's failing measurement.
         let repeatsNearest = row.id == result.nearestFailingCheck && result.nearestSpot != nil
-        let view = result.viewToTake(for: row).flatMap { view in
-            ResultCardActions.offersView(capturable: view.capturable, sourceAvailable: sourceAvailable) ? view : nil
-        }
+        // One fact for the line's "Show me" and its words, so they can't disagree.
+        let view = result.offeredView(for: row, sourceAvailable: sourceAvailable)
         return CardCheckLine(
             row: row,
-            sentence: repeatsNearest ? nil : ScanCopy.cardLine(row),
-            spokenSentence: repeatsNearest ? nil : ScanCopy.cardLine(row, spoken: true),
+            sentence: repeatsNearest ? nil : ScanCopy.cardLine(row, photoOffered: view != nil),
+            spokenSentence: repeatsNearest ? nil : ScanCopy.cardLine(row, photoOffered: view != nil, spoken: true),
             showMe: view.map { view in { actions.captureMissing(view.id) } }
         )
     }
@@ -446,6 +482,8 @@ private enum CheckSymbol {
 
 private struct ChecksList: View {
     var checks: [CheckRow]
+    /// The ids of the checks whose card line offers the camera (`ResultPresentation.offeredView`).
+    var photoOffered: Set<String>
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -454,7 +492,7 @@ private struct ChecksList: View {
                 .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
                 ForEach(Array(checks.enumerated()), id: \.element.id) { index, row in
-                    CheckRowView(row: row)
+                    CheckRowView(row: row, photoOffered: photoOffered.contains(row.id))
                     if index < checks.count - 1 {
                         Divider().padding(.leading, 52)
                     }
@@ -467,6 +505,7 @@ private struct ChecksList: View {
 
 private struct CheckRowView: View {
     var row: CheckRow
+    var photoOffered: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -488,7 +527,7 @@ private struct CheckRowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if row.outcome == .unsure {
-                    Label(ScanCopy.unsureNote(row), systemImage: row.needsPerson ? "person.fill" : "camera.fill")
+                    Label(ScanCopy.unsureNote(photoOffered: photoOffered), systemImage: photoOffered ? "camera.fill" : "person.fill")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Palette.reviewInk)
                 }
@@ -498,7 +537,7 @@ private struct CheckRowView: View {
         .padding(14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(row.title): \(ScanCopy.outcomeWord(row.outcome))")
-        .accessibilityValue([row.reason, ScanCopy.measurement(row, spoken: true), row.outcome == .unsure ? ScanCopy.unsureNote(row) : nil]
+        .accessibilityValue([row.reason, ScanCopy.measurement(row, spoken: true), row.outcome == .unsure ? ScanCopy.unsureNote(photoOffered: photoOffered) : nil]
             .compactMap(\.self).joined(separator: ". "))
         // The card shows the deciding checks as `check.<id>`; this is the full list.
         .accessibilityIdentifier("detail.check.\(row.id)")
@@ -540,7 +579,7 @@ private struct MissingList: View {
                         .buttonStyle(TextActionStyle())
                         .accessibilityIdentifier("action.captureMissing")
                     } else {
-                        Label("An installer will check this", systemImage: "person.fill")
+                        Label(ScanCopy.needsInstaller, systemImage: "person.fill")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Palette.muted)
                     }

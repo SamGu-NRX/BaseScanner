@@ -66,16 +66,17 @@ import Testing
         #expect(next.switched == .satisfied)
     }
 
-    /// "Can't get there" on it marks the ground skipped, as the engine does, and resets the planner
-    /// (`ScanEngine.resetGuidanceAfterSkip`): the walk moves on and doesn't ask for it again.
+    /// "Can't get there" on it marks the ground skipped, as the engine does, and settles the
+    /// planner's task (`ScanEngine.resetGuidanceAfterSkip`): the walk moves on and doesn't ask for
+    /// it again.
     @Test func cantGetThereOnTheGroundByTheMeterMovesOn() {
         var map = CoverageMap(wall: standardWall())
         var planner = GuidancePlanner()
         #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0).task == .aimAtGround(s: 0))
         map.markSkipped(.ground, -0.5...0.5)
-        // Skipped is not covered: without the reset the request holds for its dwell.
+        // Skipped is not covered: without settling the request holds for its dwell.
         #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0.5).task == .aimAtGround(s: 0))
-        planner.reset()
+        planner.settleCurrentTask()
         #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0.6).task != .aimAtGround(s: 0))
         // Away from the meter nothing lags, and the walk goes left.
         #expect(planner.update(coverage: map, camera: Self.homeowner(x: -3), time: 10).task == .walk(.left))
@@ -418,6 +419,36 @@ import Testing
         #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 40).task != .aimAtGround(s: 0))
         planner.reset()
         #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 41).task == .aimAtGround(s: 0))
+    }
+
+    /// #56: answering something else doesn't bring back a request that stalled. The ground by the
+    /// meter stalls and is deferred (as in the test above); the camera stays near the meter, and
+    /// the left end is marked at s = -0.6 and answered blocked while the right stays open. The
+    /// engine then settles the planner's task (`ScanEngine.resetGuidanceAfterSkip`): the deferred
+    /// ground stays deferred, rather than coming back with a fresh 20 s clock. The same planner
+    /// reset for a new scan (or a spatial reset) forgets it and asks again.
+    @Test func settlingATaskKeepsWhatStalledButANewScanForgetsIt() {
+        var map = CoverageMap(wall: standardWall())
+        var planner = GuidancePlanner()
+        #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0).task == .aimAtGround(s: 0))
+        map.observe(groundCamera(s: -0.45), trackingNormal: true)
+        map.observe(groundCamera(s: -0.15), trackingNormal: true)
+        #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 8).task == .aimAtGround(s: 0))
+        let stalled = planner.update(coverage: map, camera: Self.homeowner(), time: 28)
+        #expect(stalled.stalled == .aimAtGround(s: 0))
+        #expect(stalled.task != .aimAtGround(s: 0))
+
+        map.setEnd(.left, at: -0.6)
+        map.setEndIsLimit(.left, true)
+        var newScan = planner
+
+        planner.settleCurrentTask()
+        for time in [28.5, 29.0, 40.0, 60.0] {
+            #expect(planner.update(coverage: map, camera: Self.homeowner(), time: time).task != .aimAtGround(s: 0), "settled at \(time) s")
+        }
+
+        newScan.reset()
+        #expect(newScan.update(coverage: map, camera: Self.homeowner(), time: 28.5).task == .aimAtGround(s: 0))
     }
 
     /// Review of #120: a lagging-band request that stalls in the middle of the window is not asked

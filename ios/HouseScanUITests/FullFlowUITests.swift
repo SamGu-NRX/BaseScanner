@@ -50,7 +50,25 @@ final class FullFlowUITests: XCTestCase {
     @MainActor
     func testFullFlowFromReplay() throws {
         let replay = Self.environment["HOUSESCAN_REPLAY"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fixture
-        try runFlow(replay: replay)
+        // A real server's answer can be any decision; the bundled sample is always a manual review.
+        let sample = Self.environment["HOUSESCAN_SERVER_URL"]?.isEmpty ?? true
+        try runFlow(replay: replay) { app, phase in
+            if sample, phase == "result" { Self.assertInstallerReviewCopy(app) }
+        }
+    }
+
+    /// The sample result needs a person to settle it (`SampleResult.json`). The app only shows
+    /// the answer and contacts nobody, so its words say what the result needs, never that an
+    /// installer will confirm or review it.
+    @MainActor
+    private static func assertInstallerReviewCopy(_ app: XCUIApplication) {
+        func label(_ identifier: String) -> String? {
+            let element = app.descendants(matching: .any)[identifier].firstMatch
+            return element.exists ? element.label : nil
+        }
+        XCTAssertEqual(label("result.headline"), "Needs an installer's review")
+        XCTAssertEqual(label("result.installerConfirms"), "Before any battery goes in, an installer has to confirm where it goes on site.")
+        XCTAssertEqual(label("result.rulesNotFinal"), "The placement rules aren't final yet, so every result needs an installer's review for now.")
     }
 
     /// The flow from the LiDAR fixture. Depth must show the bin in front of the wall: the wall map
@@ -278,13 +296,19 @@ final class FullFlowUITests: XCTestCase {
         let row = app.switches["developer.practiceMeter"]
         XCTAssertTrue(row.waitForExistence(timeout: 10), "the developer options have no practice meter switch")
         let wanted = on ? "1" : "0"
-        if row.value as? String != wanted {
+        let set = NSPredicate(format: "value == %@", wanted)
+        // The sheet can still be presenting when the switch first exists: on hosted runs its list
+        // cells had no frames yet and the tap changed nothing (runs 37114486663, 37117066081). So
+        // wait until the switch can be tapped, and tap again only while the value is still wrong,
+        // which a switch tolerates.
+        for _ in 0..<3 where row.value as? String != wanted {
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: row)], timeout: 5)
             // A Form row's switch is the row; the control inside it takes the tap.
             let control = row.switches.firstMatch
             (control.exists ? control : row).tap()
+            if XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 2) == .completed { break }
         }
-        let set = NSPredicate(format: "value == %@", wanted)
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 5), .completed, "the switch didn't turn \(on ? "on" : "off")")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 3), .completed, "the switch didn't turn \(on ? "on" : "off")")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "developerOptions-\(on ? "on" : "off")"
         shot.lifetime = .keepAlways

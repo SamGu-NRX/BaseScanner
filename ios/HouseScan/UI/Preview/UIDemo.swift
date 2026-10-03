@@ -15,6 +15,8 @@ import SwiftUI
 ///   question answered, so it shows as the folded row with Change.
 /// - `-uiDemoOffline`: uploads fail offline.
 /// - `-uiDemoRejected`: the server refuses the first upload; "Back to review" then sends it again.
+/// - `-uiDemoUnusableAnswer <n>`: the first `n` answers can't be used (1 if `n` is missing);
+///   "Try again" sends the scan again, and the answer after them is the result.
 /// - `-uiDemoFailure <cameraDenied|arUnsupported|sessionFailed|replayUnreadable>`: open on the
 ///   unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
@@ -23,6 +25,9 @@ import SwiftUI
 ///   file, mapped as the engine maps one; the UI tests keep such files in `Fixtures/results/`.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
+/// - `-uiDemoMarkEnd`: the walk has reached the right end and asks whether the wall ends there;
+///   with `-uiDemoEndMarkRefusal`, "Wall ends here" was just refused (circle off the wall).
+/// - `-uiDemoCloseUpSkipped`: the meter close-up was skipped, so no saved photo shows.
 /// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall
 ///   where they stand leaves part of the walk out.
 /// - `-uiDemoNextWall`: the right end turns a corner and the walk asks for the next wall; with
@@ -45,8 +50,11 @@ import SwiftUI
 ///   followed it, so the window and part of its clearance zone are round the corner. For the
 ///   result model: `-uiDemoPhase result -uiDemoCorner`.
 /// - `-uiDemoPhase spotConfirm`: the spot check before the result, on the made-up sample spot.
-/// - `-uiDemoSpotAnswered <clear|somethingThere>`: with `-uiDemoPhase spotConfirm`, the check is
-///   answered and says what happens next.
+/// - `-uiDemoSpotAnswered <clear|somethingThere|cannotCheck>`: with `-uiDemoPhase spotConfirm`,
+///   the check is answered and says what happens next. With `-uiDemoPhase result`, the result
+///   follows that answer, so it shows the answer's notice.
+/// - `-uiDemoUncheckedElsewhere`: with `-uiDemoPhase result`, an earlier area of the wall was
+///   answered "I can't check this area", so the result says so beside its spot's notice.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///

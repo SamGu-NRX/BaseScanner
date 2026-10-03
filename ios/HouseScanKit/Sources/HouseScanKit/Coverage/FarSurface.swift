@@ -30,6 +30,18 @@ public struct FarSurfaceConfig: Sendable, Equatable {
     /// A plane shorter than this can be looked over, or is something low standing in the space:
     /// 1 m, above an AC unit's top and below a fence's. A guess.
     public var minHeight: Float = 1.0
+    /// A plane must stand on the ground to end the space there: where a cell meets it, its
+    /// outline has to cover the point this far above the ground (`WallFrame.groundY`), reaching
+    /// down to within this of the ground and rising above it (`Candidate.standsOnGround`). One that stops higher, such as an eave, a
+    /// bay window or an upper storey across a walkway, leaves open ground under it, or ARKit
+    /// hasn't seen what stands under it. One whose top stays below that level is sunk into the
+    /// ground, like the far side of a window well. 0.5 m covers the 0.3 m error of a guessed
+    /// ground (`ScanEngine.estimatedGroundError`) plus 0.2 m of the foot of a fence or wall that
+    /// ARKit's outline hasn't grown down to yet. The 0.2 m is a guess: no field capture has
+    /// measured how close to the ground ARKit's outlines reach (review of #168). With the ground
+    /// guessed 0.3 m too high, a plane whose outline stops 0.8 m above the real ground still
+    /// counts, and so does one rising only 0.5 m above the ground with the rest of it below.
+    public var maxGroundGap: Float = 0.5
     /// How far past a plane's outline, along it, a cell may still be in front of it: 0.15 m, one
     /// coverage cell, as ARKit's outline grows behind what the camera has seen. A guess.
     public var outlineMargin: Float = 0.15
@@ -46,9 +58,10 @@ public enum FarSurface {
     /// points (a quarter and three quarters along the cell) on the wall's line, straight out along
     /// the piece's outward, the distance to the nearest detected plane that faces the wall
     /// (within `maxAngle` of parallel, `minOut` to `maxOut` out, at least `minWidth` wide and
-    /// `minHeight` tall, of any class but a door or a window) and whose outline, along the plane,
-    /// reaches the point it is met at. The smaller of the two, rounded down to `quantum`, with
-    /// touching cells of equal distance merged. Cells with no such plane are left out.
+    /// `minHeight` tall, standing on the ground within `maxGroundGap`, of any class but a door or
+    /// a window) and whose outline, along the plane, reaches the point it is met at. The smaller
+    /// of the two, rounded down to `quantum`, with touching cells of equal distance merged. Cells
+    /// with no such plane are left out.
     ///
     /// A plane whose outline comes within `minOut` of the line of the nearest piece parallel to
     /// it, or crosses it, at either end is the wall's own, or runs into it, and never counts
@@ -80,6 +93,7 @@ public enum FarSurface {
                 guard out >= config.minOut, out <= config.maxOut else { continue }
                 let along = simd_dot(foot + piece.outward * out - plane.center, plane.along)
                 guard along >= plane.first - config.outlineMargin, along <= plane.last + config.outlineMargin else { continue }
+                guard plane.standsOnGround(at: along, groundY: wall.groundY, config: config) else { continue }
                 best = min(best ?? out, out)
             }
             return best
@@ -112,6 +126,9 @@ public enum FarSurface {
         /// The outline's extent along `along`, from the centre.
         var first: Float
         var last: Float
+        /// The outline in the plane, in order around it: x along `along` from the centre, y the
+        /// world height.
+        var outline: [SIMD2<Float>]
 
         init?(_ plane: WallPlaneEvidence, wall: WallFrame, config: FarSurfaceConfig) {
             guard plane.kind != .other, let normal = plane.horizontalNormal, !plane.boundary.isEmpty else { return nil }
@@ -127,6 +144,33 @@ public enum FarSurface {
             self.along = along
             self.first = first
             self.last = last
+            self.outline = zip(offsets, heights).map { SIMD2($0, $1) }
+        }
+
+        /// Whether the outline stands on the ground where a cell meets it, `offset` along the
+        /// plane from its centre (held to the outline's ends): the outline covers the point
+        /// `maxGroundGap` above the ground there, so it reaches down to within that of the ground
+        /// and rises above it in one piece. The height span alone let a plane hanging well above
+        /// the ground end the space under it (review of #168). The outline's lowest and highest
+        /// points would still let a plane end it across a gap at that height, or, taken over the
+        /// whole outline, past where its lower edge climbs away from the ground.
+        func standsOnGround(at offset: Float, groundY: Float, config: FarSurfaceConfig) -> Bool {
+            let point = SIMD2(min(max(offset, first), last), groundY + config.maxGroundGap)
+            var inside = false
+            for (a, b) in zip(outline, outline.dropFirst() + outline.prefix(1)) {
+                if Self.distance(from: point, toEdge: a, b) <= 1e-4 { return true }
+                // Even-odd rule, casting the ray up from the point.
+                guard (a.x > point.x) != (b.x > point.x) else { continue }
+                if a.y + (b.y - a.y) * (point.x - a.x) / (b.x - a.x) > point.y { inside.toggle() }
+            }
+            return inside
+        }
+
+        private static func distance(from point: SIMD2<Float>, toEdge a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float {
+            let edge = b - a
+            let length = simd_length_squared(edge)
+            let t = length > 0 ? min(max(simd_dot(point - a, edge) / length, 0), 1) : 0
+            return simd_distance(point, a + edge * t)
         }
 
         /// Whether one horizontal end of a plane's outline stands at least `minOut` in front of
@@ -148,5 +192,54 @@ public enum FarSurface {
             guard let nearest else { return true }
             return nearest.coordinates(ofOffset: offset).out >= config.minOut
         }
+    }
+}
+
+/// Keeps a coverage map's far surface measured from the vertical planes ARKit tracks
+/// (`ScanEngine.noteFarSurface`). It measures again whenever the planes, the wall, the excluded
+/// plane or the stretch measured over change, and gives nil otherwise.
+///
+/// The stretch is where kept frames look (`CoverageMap.viewedExtent`), rounded outward to whole
+/// `step`s. It used to be the stretch seen, `seenExtent`, plus `maxDistance` either way. But a
+/// change of far surface rebuilds the map from its kept frames (`CoverageMap.setFarSurface`), and
+/// the rebuild changes what counts as seen. With every view taken from beyond a far wall, the
+/// cells behind it went from hidden to past the space. The stretch seen then emptied, the next
+/// frame measured around the meter, where the far wall wasn't, and the rebuild hid the cells
+/// again, on alternate frames (review of #168). The kept cameras don't change in a rebuild.
+public struct FarSurfaceTracker: Sendable {
+    /// The stretch grows in whole steps as the walk goes on, so the far surface, and with it a
+    /// rebuild of every kept frame, changes about once per step walked, not on every kept frame
+    /// that reaches a little farther. 1 m is a guess: no one has timed a rebuild on a phone.
+    public static let step: Float = 1
+
+    private struct Basis: Equatable {
+        var planes: [WallPlaneEvidence]
+        var wall: WallFrame
+        var range: ClosedRange<Float>
+        var excluding: Set<String>
+    }
+
+    private var basis: Basis?
+
+    public init() {}
+
+    /// The spans to set on `map` (`CoverageMap.setFarSurface`), or nil when nothing they are
+    /// measured from changed since the last call.
+    public mutating func spans(for map: CoverageMap, planes: [WallPlaneEvidence], excluding ids: Set<String>) -> [ObservedSpan]? {
+        let next = Basis(planes: planes, wall: map.wall, range: Self.range(for: map), excluding: ids)
+        guard next != basis else { return nil }
+        basis = next
+        return FarSurface.spans(planes: planes, wall: map.wall, over: next.range, cellWidth: map.config.cellWidth, excluding: ids)
+    }
+
+    /// Forgets what was measured, so the next call measures again.
+    public mutating func reset() { basis = nil }
+
+    /// Where kept frames look, rounded outward to whole steps. Before any frame is kept, 1 m
+    /// either side of the meter and `maxDistance` beyond, as the stretch seen gave then.
+    public static func range(for map: CoverageMap) -> ClosedRange<Float> {
+        let reach = map.config.maxDistance
+        let viewed = map.viewedExtent ?? (-1 - reach)...(1 + reach)
+        return ((viewed.lowerBound / step).rounded(.down) * step)...((viewed.upperBound / step).rounded(.up) * step)
     }
 }

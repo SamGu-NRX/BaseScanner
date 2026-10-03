@@ -178,9 +178,9 @@ public struct CoverageConfig: Sendable, Equatable {
 /// homeowner confirms the chosen spot before the result is shown: the spot check (`SpotPhoto`,
 /// `SpotConfirmations`; the app's `ScanEngine+Confirm.swift`) shows a kept photo of the spot and
 /// its clearance area and asks whether anything stands in front of the wall or on the ground
-/// there. "It's clear" backs the claims over that area. "Something's there" withdraws them
-/// (`withdrawClaims(over:)`): the area's wall, ground and walked-path claims export as unseen and
-/// the scan is checked again. Claims away from the chosen spot are not confirmed; they decide only
+/// there. "It's clear" backs the claims over that area. "Something's there" and "I can't check
+/// this area" withdraw them (`withdrawClaims(over:)`): the area's wall, ground and walked-path
+/// claims export as unseen and the scan is checked again. Claims away from the chosen spot are not confirmed; they decide only
 /// where the server looks for a spot, and any spot it chooses is checked in turn.
 public struct CoverageMap: Sendable {
     public private(set) var wall: WallFrame
@@ -257,7 +257,7 @@ public struct CoverageMap: Sendable {
     public private(set) var withdrawnCells: Set<Int> = []
 
     /// One camera position that saw a sample row, and whether that frame's depth confirmed it.
-    private struct Sight: Sendable {
+    private struct Sight: Sendable, Equatable {
         var position: SIMD3<Float>
         var depthVerified: Bool
     }
@@ -279,7 +279,7 @@ public struct CoverageMap: Sendable {
         return row.count != before
     }
 
-    private struct Cell: Sendable {
+    private struct Cell: Sendable, Equatable {
         /// Per sample row, its sightings, pairwise at least `coveringBaseline` apart. Two are
         /// enough, so a row stops collecting at two.
         var rows: [[Sight]]
@@ -291,6 +291,11 @@ public struct CoverageMap: Sendable {
         let lastWalkRow: Int
         /// Rows a kept frame's depth showed hidden behind something nearer.
         var hiddenRows: Set<Int> = []
+        /// Rows a kept frame's depth showed past where the space ends (`farSurface`), while short
+        /// of two positions. Not hidden: nothing stands in front of the wall there to look past
+        /// (#160). A later view without depth adds nothing to them, as for hidden rows: it can't
+        /// see through that surface.
+        var pastSpaceRows: Set<Int> = []
         var skipped = false
         var covered = false
 
@@ -423,12 +428,17 @@ public struct CoverageMap: Sendable {
     /// Every cell a frame sees or finds hidden at least one row of, before the marked ends clip
     /// anything that isn't allowed. Without `depth` nothing is hidden.
     public func visibleCells(from camera: CameraFrame, depth: DepthImage? = nil) -> [Sighting] {
+        visibleCells(from: camera, depth: depth, reads: nil)
+    }
+
+    /// `visibleCells(from:depth:)`, noting in `reads` where the far-surface lookup was consulted.
+    private func visibleCells(from camera: CameraFrame, depth: DepthImage?, reads: FarSurfaceReadLog?) -> [Sighting] {
         var seen: [Sighting] = []
         for band in SurfaceBand.allCases {
             for index in candidateIndices(for: camera) {
-                let views = rowViews(band, index, from: camera, depth: depth, among: Array(rowOffsets(band).indices))
-                if !views.seen.isEmpty || !views.hidden.isEmpty {
-                    seen.append(Sighting(band: band, index: index, rows: views.seen, hiddenRows: views.hidden))
+                let views = rowViews(band, index, from: camera, depth: depth, among: Array(rowOffsets(band).indices), reads: reads)
+                if !views.seen.isEmpty || !views.hidden.isEmpty || !views.pastSpace.isEmpty {
+                    seen.append(Sighting(band: band, index: index, rows: views.seen, hiddenRows: views.hidden, pastSpaceRows: views.pastSpace))
                 }
             }
         }
@@ -442,6 +452,8 @@ public struct CoverageMap: Sendable {
         public var rows: Set<Int>
         /// The rows the frame's depth showed hidden behind something nearer.
         public var hiddenRows: Set<Int>
+        /// The rows the frame's depth showed past where the space ends (`farSurface`).
+        public var pastSpaceRows: Set<Int> = []
     }
 
     /// Records cells a kept keyframe with normal tracking saw from `position`: the part of
@@ -455,7 +467,7 @@ public struct CoverageMap: Sendable {
 
     /// `record` without the revision: also whether any cell's level changed, which a hidden
     /// cell's row gaining a position can do without counting in `Delta`. Sightings not checked
-    /// against depth add no position to a row found hidden.
+    /// against depth add no position to a row found hidden or past where the space ends.
     @discardableResult
     private mutating func recordSightings(
         _ sightings: [Sighting], from position: SIMD3<Float>, depthChecked: Bool
@@ -467,7 +479,7 @@ public struct CoverageMap: Sendable {
             let wasSeen = cell.isSeen
             let before = cell.level
             var added = false
-            for row in sighting.rows where cell.rows.indices.contains(row) && (depthChecked || !cell.hiddenRows.contains(row)) {
+            for row in sighting.rows where cell.rows.indices.contains(row) && (depthChecked || !(cell.hiddenRows.contains(row) || cell.pastSpaceRows.contains(row))) {
                 // A repeated or nearby frame adds no parallax, so it adds nothing.
                 if add(&cell.rows[row], position, verified: depthChecked) { added = true }
             }
@@ -476,6 +488,13 @@ public struct CoverageMap: Sendable {
             for row in sighting.hiddenRows where cell.rows.indices.contains(row) {
                 if Self.dropUnverified(&cell.rows[row]) { added = true }
                 if cell.rows[row].count < 2, cell.hiddenRows.insert(row).inserted { added = true }
+            }
+            // A sighting no depth confirmed, of a row past where the space ends, was of that
+            // surface, as for the ground depth rows (`recordDepth`). Discarding these rows let
+            // views without depth taken before a late far surface keep a wall behind it covered.
+            for row in sighting.pastSpaceRows where cell.rows.indices.contains(row) {
+                if Self.dropUnverified(&cell.rows[row]) { added = true }
+                if cell.rows[row].count < 2, cell.pastSpaceRows.insert(row).inserted { added = true }
             }
             guard added else { continue }
             if !wasSeen, cell.isSeen { delta.newlySeen += 1 }
@@ -549,15 +568,17 @@ public struct CoverageMap: Sendable {
         rowViews(band, index, from: camera, depth: nil, among: Array(rowOffsets(band).indices)).seen
     }
 
-    private func rowViews(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame, depth: DepthImage?, among rows: [Int]) -> RowViews {
+    private func rowViews(
+        _ band: SurfaceBand, _ index: Int, from camera: CameraFrame, depth: DepthImage?, among rows: [Int], reads: FarSurfaceReadLog? = nil
+    ) -> RowViews {
         let offsets = rowOffsets(band)
-        return sampledRows(index, from: camera, depth: depth, rows: rows, onWallFace: band == .wall) { s, row in
+        return sampledRows(index, from: camera, depth: depth, rows: rows, onWallFace: band == .wall, reads: reads) { s, row in
             band == .wall ? wall.world(s: s, height: offsets[row]) : wall.world(s: s, height: 0, out: offsets[row])
         }
     }
 
     /// What one frame showed of a cell's rows.
-    private struct RowViews {
+    private struct RowViews: Sendable {
         var seen: Set<Int> = []
         var hidden: Set<Int> = []
         /// Rows past where the space ends (`DepthEvidence.pastSpace`): neither seen nor hidden.
@@ -578,12 +599,12 @@ public struct CoverageMap: Sendable {
         case none
     }
 
-    private func depthEvidence(_ point: SIMD3<Float>, camera: CameraFrame, depth: DepthImage) -> DepthEvidence {
+    private func depthEvidence(_ point: SIMD3<Float>, camera: CameraFrame, depth: DepthImage, reads: FarSurfaceReadLog? = nil) -> DepthEvidence {
         guard let projected = depth.projection(of: point, pose: camera),
               let reading = depth.meters(atPixel: projected.pixel, minimumConfidence: config.minimumDepthConfidence) else { return .none }
         let tolerance = config.depthTolerance + config.depthTolerancePerMeter * projected.depth
         if reading < projected.depth - tolerance {
-            return endsSpace(point, reading: reading, depth: projected.depth, camera: camera) ? .pastSpace : .nearer
+            return endsSpace(point, reading: reading, depth: projected.depth, camera: camera, reads: reads) ? .pastSpace : .nearer
         }
         return reading <= projected.depth + tolerance ? .matches : .none
     }
@@ -599,16 +620,27 @@ public struct CoverageMap: Sendable {
     /// or a parked car's side, can qualify as the far surface (`FarSurface.spans`). The wall and
     /// ground behind it then read unseen rather than hidden: the walk stops asking to look past
     /// it, but nothing behind it is claimed seen, so a check there stays unsure.
-    private func endsSpace(_ point: SIMD3<Float>, reading: Float, depth: Float, camera: CameraFrame) -> Bool {
+    ///
+    /// With `reads`, both cells this could consult are noted with what the lookup holds there,
+    /// before the empty-lookup return and the short circuit: under another lookup the answer can
+    /// turn on either of them (`RebuildViewCache`).
+    private func endsSpace(_ point: SIMD3<Float>, reading: Float, depth: Float, camera: CameraFrame, reads: FarSurfaceReadLog? = nil) -> Bool {
+        // z-depth grows in proportion along a ray from the camera, so what the reading met lies
+        // that fraction of the way to the point.
+        let met = camera.position + (point - camera.position) * (reading / depth)
+        if let reads {
+            for world in [point, met] {
+                let cell = cellIndex(forS: wall.wallPoint(world).s)
+                reads.note(cell, farSurfaceByCell[cell])
+            }
+        }
         guard !farSurfaceByCell.isEmpty else { return false }
         func pastSpace(_ world: SIMD3<Float>) -> Bool {
             let at = wall.wallPoint(world)
             guard let far = farSurface(atS: at.s) else { return false }
             return at.out >= far - config.farSurfaceTolerance
         }
-        // z-depth grows in proportion along a ray from the camera, so what the reading met lies
-        // that fraction of the way to the point.
-        return pastSpace(point) || pastSpace(camera.position + (point - camera.position) * (reading / depth))
+        return pastSpace(point) || pastSpace(met)
     }
 
     /// The rows of a cell whose samples, a quarter and three quarters along it, are all in view:
@@ -617,7 +649,7 @@ public struct CoverageMap: Sendable {
     /// the wall face, up for the ground. With `depth`, a row in view is seen only when depth
     /// matches both samples, and hidden when it finds either behind something nearer.
     private func sampledRows(
-        _ index: Int, from camera: CameraFrame, depth: DepthImage?, rows: [Int], onWallFace: Bool,
+        _ index: Int, from camera: CameraFrame, depth: DepthImage?, rows: [Int], onWallFace: Bool, reads: FarSurfaceReadLog? = nil,
         point: (_ s: Float, _ row: Int) -> SIMD3<Float>
     ) -> RowViews {
         let range = cellRange(index)
@@ -645,7 +677,7 @@ public struct CoverageMap: Sendable {
                 views.seen.insert(row)
                 continue
             }
-            let evidence = points.map { depthEvidence($0, camera: camera, depth: depth) }
+            let evidence = points.map { depthEvidence($0, camera: camera, depth: depth, reads: reads) }
             if evidence.allSatisfy({ $0 == .matches }) {
                 views.seen.insert(row)
             } else if evidence.contains(.nearer) {
@@ -707,10 +739,26 @@ public struct CoverageMap: Sendable {
         depthRowViews(index, from: camera, depth: depth).seen
     }
 
-    private func depthRowViews(_ index: Int, from camera: CameraFrame, depth: DepthImage?) -> RowViews {
+    private func depthRowViews(_ index: Int, from camera: CameraFrame, depth: DepthImage?, reads: FarSurfaceReadLog? = nil) -> RowViews {
         let rows = groundDepthRows
-        return sampledRows(index, from: camera, depth: depth, rows: Array(rows.indices), onWallFace: false) { s, row in
+        return sampledRows(index, from: camera, depth: depth, rows: Array(rows.indices), onWallFace: false, reads: reads) { s, row in
             wall.world(s: s, height: 0, out: rows[row])
+        }
+    }
+
+    /// What one frame showed of one cell's ground depth rows.
+    private struct DepthRowView: Sendable {
+        var index: Int
+        var views: RowViews
+    }
+
+    /// A frame's view of the ground depth rows of every cell it shows any of: the part of
+    /// `recordDepth` that reads no recorded state.
+    private func depthRowViews(from camera: CameraFrame, depth: DepthImage?, reads: FarSurfaceReadLog? = nil) -> [DepthRowView] {
+        candidateIndices(for: camera).compactMap { index in
+            let views = depthRowViews(index, from: camera, depth: depth, reads: reads)
+            guard !views.seen.isEmpty || !views.hidden.isEmpty || !views.pastSpace.isEmpty else { return nil }
+            return DepthRowView(index: index, views: views)
         }
     }
 
@@ -721,11 +769,17 @@ public struct CoverageMap: Sendable {
     /// (`depthPastSpace`), and a frame without depth adds nothing to them either.
     @discardableResult
     private mutating func recordDepth(from camera: CameraFrame, depth: DepthImage?) -> Bool {
+        recordDepth(depthRowViews(from: camera, depth: depth), from: camera.position, depthChecked: depth != nil)
+    }
+
+    /// `recordDepth(from:depth:)` given the frame's views, from `position`; `depthChecked` when the
+    /// frame had depth.
+    @discardableResult
+    private mutating func recordDepth(_ found: [DepthRowView], from position: SIMD3<Float>, depthChecked: Bool) -> Bool {
         let rowCount = groundDepthRows.count
         var changed = false
-        for index in candidateIndices(for: camera) {
-            let views = depthRowViews(index, from: camera, depth: depth)
-            guard !views.seen.isEmpty || !views.hidden.isEmpty || !views.pastSpace.isEmpty else { continue }
+        for item in found {
+            let index = item.index, views = item.views
             var rows = depthCells[index] ?? Array(repeating: [], count: rowCount)
             for row in views.hidden {
                 if Self.dropUnverified(&rows[row]) { changed = true }
@@ -737,9 +791,9 @@ public struct CoverageMap: Sendable {
                 if Self.dropUnverified(&rows[row]) { changed = true }
                 if rows[row].count < 2 { depthPastSpace[index, default: []].insert(row) }
             }
-            let hidden = depth == nil ? (depthHidden[index] ?? []).union(depthPastSpace[index] ?? []) : []
+            let hidden = depthChecked ? [] : (depthHidden[index] ?? []).union(depthPastSpace[index] ?? [])
             for row in views.seen where !hidden.contains(row) {
-                if add(&rows[row], camera.position, verified: depth != nil) { changed = true }
+                if add(&rows[row], position, verified: depthChecked) { changed = true }
             }
             depthCells[index] = rows
         }
@@ -822,8 +876,31 @@ public struct CoverageMap: Sendable {
     /// is anything standing on the ground (see the type's comment).
     @discardableResult
     private mutating func recordPastLimits(from camera: CameraFrame, depth: DepthImage?) -> Bool {
-        guard wall.wallPoint(camera.position).out > 0 else { return false }
-        var changed = false
+        recordPastLimits(pastLimitViews(from: camera, depth: depth), from: camera.position, depthChecked: depth != nil)
+    }
+
+    /// What one frame showed of a sample row past a limit end.
+    private enum PastLimitRow: UInt8, Sendable {
+        /// Not both samples in view, or in view without matching: adds nothing.
+        case none
+        /// Depth found something nearer, or the surface where the space ends, at either sample.
+        case blocked
+        /// Both samples in view and, with depth, matched.
+        case matches
+    }
+
+    /// One frame's view of the rows of one cell past a limit end (`pastLimitCells`).
+    private struct PastLimitCellView: Sendable {
+        var side: WalkSide
+        var cell: Int
+        var rows: [PastLimitRow]
+    }
+
+    /// A frame's view of the ground past each limit end: the part of `recordPastLimits` that reads
+    /// no recorded state. Cells it shows nothing of are left out.
+    private func pastLimitViews(from camera: CameraFrame, depth: DepthImage?, reads: FarSurfaceReadLog? = nil) -> [PastLimitCellView] {
+        guard wall.wallPoint(camera.position).out > 0 else { return [] }
+        var found: [PastLimitCellView] = []
         for side in limitEnds {
             guard let end = end(side) else { continue }
             let piece = endPiece(side, end: end)
@@ -855,33 +932,54 @@ public struct CoverageMap: Sendable {
                       let pixel = camera.pixel(of: target),
                       camera.contains(pixel: pixel, margin: config.imageMargin) else { return nil }
                 guard let depth else { return .matches }
-                return depthEvidence(target, camera: camera, depth: depth)
+                return depthEvidence(target, camera: camera, depth: depth, reads: reads)
             }
             for cell in first...last {
                 let range = pastCellRange(side, cell, end: end)
                 let width = range.upperBound - range.lowerBound
                 let alongs = [range.lowerBound + width * 0.25, range.lowerBound + width * 0.75]
-                var rows = pastLimitCells[side]?[cell] ?? Array(repeating: [], count: 2 * depths.count)
-                var added = false
+                var rows = [PastLimitRow](repeating: .none, count: 2 * depths.count)
                 for row in rows.indices {
                     let out = row < depths.count ? depths[row] : -depths[row - depths.count]
-                    let found = alongs.map { evidence($0, out) }
-                    guard found.allSatisfy({ $0 != nil }) else { continue }
+                    let samples = alongs.map { evidence($0, out) }
+                    guard samples.allSatisfy({ $0 != nil }) else { continue }
                     // Past a limit end nothing is asked to be looked past, so the surface where
                     // the space ends blocks a row just as anything nearer does.
-                    if depth != nil, found.contains(where: { $0 == .nearer || $0 == .pastSpace }) {
-                        if Self.dropUnverified(&rows[row]) { added = true }
-                        if rows[row].count < 2 { pastLimitHidden[side, default: [:]][cell, default: []].insert(row) }
-                        continue
+                    if depth != nil, samples.contains(where: { $0 == .nearer || $0 == .pastSpace }) {
+                        rows[row] = .blocked
+                    } else if samples.allSatisfy({ $0 == .matches }) {
+                        rows[row] = .matches
                     }
-                    guard found.allSatisfy({ $0 == .matches }),
-                          depth != nil || !(pastLimitHidden[side]?[cell]?.contains(row) ?? false) else { continue }
-                    if add(&rows[row], camera.position, verified: depth != nil) { added = true }
                 }
-                if added {
-                    pastLimitCells[side, default: [:]][cell] = rows
-                    changed = true
+                if rows.contains(where: { $0 != .none }) { found.append(PastLimitCellView(side: side, cell: cell, rows: rows)) }
+            }
+        }
+        return found
+    }
+
+    /// `recordPastLimits(from:depth:)` given the frame's views, from `position`; `depthChecked`
+    /// when the frame had depth.
+    @discardableResult
+    private mutating func recordPastLimits(_ found: [PastLimitCellView], from position: SIMD3<Float>, depthChecked: Bool) -> Bool {
+        var changed = false
+        for view in found {
+            var rows = pastLimitCells[view.side]?[view.cell] ?? Array(repeating: [], count: view.rows.count)
+            var added = false
+            for (row, kind) in view.rows.enumerated() {
+                switch kind {
+                case .none:
+                    continue
+                case .blocked:
+                    if Self.dropUnverified(&rows[row]) { added = true }
+                    if rows[row].count < 2 { pastLimitHidden[view.side, default: [:]][view.cell, default: []].insert(row) }
+                case .matches:
+                    guard depthChecked || !(pastLimitHidden[view.side]?[view.cell]?.contains(row) ?? false) else { continue }
+                    if add(&rows[row], position, verified: depthChecked) { added = true }
                 }
+            }
+            if added {
+                pastLimitCells[view.side, default: [:]][view.cell] = rows
+                changed = true
             }
         }
         return changed
@@ -903,7 +1001,11 @@ public struct CoverageMap: Sendable {
         pastLimitCells = [:]
         pastLimitHidden = [:]
         guard !limitEnds.isEmpty else { return }
-        for index in captureOrder { recordPastLimits(from: observedCameras[index], depth: observedDepths[index]) }
+        prepareRebuildViews()
+        for index in captureOrder {
+            let views = rebuildPastLimitViews(index)
+            recordPastLimits(views, from: observedCameras[index].position, depthChecked: observedDepths[index] != nil)
+        }
     }
 
     // MARK: Where the space ends
@@ -916,17 +1018,36 @@ public struct CoverageMap: Sendable {
     /// Records where the space in front of the wall ends (#160, #164). With depth, a reading
     /// nearer than a sample that is that surface, or a sample at or past it, then counts as the
     /// end of the space (neither seen nor hidden) rather than as something in front of the wall to
-    /// look past. It applies to frames observed from now on and to every frame a rebuild replays;
-    /// what earlier frames recorded stays. No cell's level changes, so the revision doesn't either.
+    /// look past.
+    ///
+    /// When the surface over any cell changes and a kept frame had depth, every kept frame is
+    /// replayed against the new surface, as it is for a new ground or wall
+    /// (`replayObservedCameras`). ARKit can find a corridor's far wall only after depth frames
+    /// have marked the ground behind it hidden. Before this replay those rows stayed hidden and
+    /// the walk kept asking to look past the wall (review of #168). When ARKit stops finding a
+    /// surface, the replay marks hidden again whatever that surface ended. Real obstructions
+    /// nearer the wall stay hidden, and skipped and withdrawn cells are kept. A row that depth
+    /// shows past the surface loses the sightings no depth confirmed, and later views without
+    /// depth add nothing to it (`Cell.pastSpaceRows`). Frames without depth never consult the
+    /// surface, so a map without depth frames replays nothing and its revision stays the same.
     public mutating func setFarSurface(_ spans: [ObservedSpan]) {
+        setFarSurface(spans, replay: true)
+    }
+
+    // Wall updates and corner turns already replay all kept frames. They update the lookup
+    // without replaying here, so each operation rebuilds once, with its own skipped-cell shift.
+    private mutating func setFarSurface(_ spans: [ObservedSpan], replay: Bool) {
         guard spans != farSurface else { return }
         farSurface = spans
-        farSurfaceByCell = [:]
+        var byCell: [Int: Float] = [:]
         for item in spans {
             for index in indices(overlapping: item.span) {
-                farSurfaceByCell[index] = min(farSurfaceByCell[index] ?? item.out, item.out)
+                byCell[index] = min(byCell[index] ?? item.out, item.out)
             }
         }
+        guard byCell != farSurfaceByCell else { return }
+        farSurfaceByCell = byCell
+        if replay, observedDepths.contains(where: { $0 != nil }) { replayObservedCameras(shiftingSkippedBy: 0) }
     }
 
     /// How far out from the wall the space ends over the cell holding `s`, meters (the nearest
@@ -1217,8 +1338,9 @@ public struct CoverageMap: Sendable {
     /// ground, near band and depth rows alike, and the walked-path clearance. The cells read
     /// `.skipped` in both bands, and the export reports none of them (`wallSeenSpans`,
     /// `groundDepthSpans`, `facingSpans`), so the server treats the stretch as unseen. For the
-    /// homeowner's "Something's there" in the spot check: the camera-only and walked-path claims
-    /// there were wrong (see the type's "Bounded exceptions").
+    /// homeowner's "Something's there" in the spot check, where the camera-only and walked-path
+    /// claims were wrong, and "I can't check this area", where nothing backs them (see the type's
+    /// "Bounded exceptions").
     ///
     /// It lasts for the scan, through rebuilds, and later views add nothing there: a photo taken
     /// without depth would claim the same stretch past the same obstruction. Overhead views are
@@ -1263,7 +1385,7 @@ public struct CoverageMap: Sendable {
         leftEnd = leftEnd.map { $0 + delta }
         rightEnd = rightEnd.map { $0 + delta }
         // Where the space ends stays where it was in the world, as the ends do.
-        setFarSurface(farSurface.map { ObservedSpan(span: ($0.span.lowerBound + delta)...($0.span.upperBound + delta), out: $0.out) })
+        setFarSurface(farSurface.map { ObservedSpan(span: ($0.span.lowerBound + delta)...($0.span.upperBound + delta), out: $0.out) }, replay: false)
         pendingShift += delta
         let whole = Int((pendingShift / config.cellWidth).rounded())
         pendingShift -= Float(whole) * config.cellWidth
@@ -1333,7 +1455,7 @@ public struct CoverageMap: Sendable {
         limitEnds.remove(side)
         // Past the corner s runs along the new piece, which the surface found in front of the old
         // one says nothing about; the caller measures it again against the new chain.
-        setFarSurface([])
+        setFarSurface([], replay: false)
         replayObservedCameras(shiftingSkippedBy: 0)
         return corner
     }
@@ -1354,10 +1476,13 @@ public struct CoverageMap: Sendable {
         depthCells = [:]
         depthHidden = [:]
         depthPastSpace = [:]
+        prepareRebuildViews()
         for index in captureOrder {
-            let camera = observedCameras[index], depth = observedDepths[index]
-            recordDepth(from: camera, depth: depth)
-            recordSightings(visibleCells(from: camera, depth: depth), from: camera.position, depthChecked: depth != nil)
+            let position = observedCameras[index].position, depthChecked = observedDepths[index] != nil
+            let depthRows = rebuildDepthRowViews(index)
+            recordDepth(depthRows, from: position, depthChecked: depthChecked)
+            let bands = rebuildBandViews(index)
+            recordSightings(bands, from: position, depthChecked: depthChecked)
         }
         replayPastLimits()
         revision += 1
@@ -1370,6 +1495,16 @@ public struct CoverageMap: Sendable {
         let seen = cells.values.flatMap { $0.filter { $0.value.isSeen || !$0.value.hiddenRows.isEmpty }.keys }
         guard let low = seen.min(), let high = seen.max() else { return nil }
         return cellRange(low).lowerBound...cellRange(high).upperBound
+    }
+
+    /// The s extent kept frames look over: every kept camera's s, `maxDistance` either way, which
+    /// covers the cells a frame samples (`candidateIndices`). Nil before any frame is kept.
+    /// Unlike `seenExtent`, a rebuild from the same cameras leaves it where it is, so a far
+    /// surface measured over it (`FarSurfaceTracker`) can't change with what the rebuild decides.
+    public var viewedExtent: ClosedRange<Float>? {
+        let along = observedCameras.map { wall.wallPoint($0.position).s }
+        guard let low = along.min(), let high = along.max() else { return nil }
+        return (low - config.maxDistance)...(high + config.maxDistance)
     }
 
     /// Range worth drawing: seen cells plus fog ahead, clipped to the marked ends. Before anything
@@ -1429,6 +1564,167 @@ public struct CoverageMap: Sendable {
     /// Total covered cells over both bands.
     public var coveredCount: Int {
         cells.values.reduce(0) { $0 + $1.filter { $0.value.covered && !withdrawnCells.contains($0.key) }.count }
+    }
+
+    // MARK: Rebuild view cache
+
+    /// A rebuild (`replayObservedCameras`, `replayPastLimits`) replays every kept frame, and most
+    /// of its time goes to working out what each frame shows. That part reads no recorded
+    /// sightings, so it is kept per frame and used again while nothing it was worked out from has
+    /// changed: the frame's camera and depth, the wall chain with its ground, `heightError`, the
+    /// ends and which of them are limits (`RebuildViewBasis`), and the far-surface lookup at every
+    /// cell the frame's depth readings consulted (`FarSurfaceReads`). `config` is fixed. Any
+    /// change to the basis (a wall update, a corner, an anchor correction, a measured ground, an
+    /// end) drops every kept view. The merge, which reads and writes the recorded sightings in
+    /// capture order, runs in full every time, so a rebuild records what it would without the
+    /// cache. Only a far-surface rebuild can reuse views: every other rebuild changes the basis.
+    private var rebuildViews = RebuildViewCache()
+
+    /// Test and measurement seam: false makes every rebuild work out every view again, so a test
+    /// can hold a cached map against a full rebuild. Nothing in the app sets it.
+    var reusesRebuildViews = true
+
+    /// How many per-frame views rebuilds took from the cache and worked out, for tests and the
+    /// probe. A frame has up to three: the bands, the ground depth rows, the ground past limits.
+    private(set) var rebuildViewCounts: (reused: Int, computed: Int) = (0, 0)
+
+    private struct RebuildViewBasis: Equatable, Sendable {
+        var wall: WallFrame
+        var leftEnd: Float?
+        var rightEnd: Float?
+        var limitEnds: Set<WalkSide>
+        var heightError: Float
+    }
+
+    private struct RebuildViewCache: Sendable {
+        var basis: RebuildViewBasis?
+        /// By index into `observedCameras`.
+        var frames: [Int: FrameViews] = [:]
+    }
+
+    /// The kept views of one frame, with the camera and depth they were worked out from.
+    private struct FrameViews: Sendable {
+        var camera: CameraFrame
+        var depth: DepthImage?
+        var bands: KeptViews<[Sighting]>?
+        var depthRows: KeptViews<[DepthRowView]>?
+        var pastLimits: KeptViews<[PastLimitCellView]>?
+    }
+
+    private struct KeptViews<Value: Sendable>: Sendable {
+        var value: Value
+        var reads: FarSurfaceReads
+    }
+
+    /// The far-surface lookup's cells a frame's views consulted, and what each held there (absent
+    /// for no surface). The views hold while the lookup holds the same at every one of them.
+    private struct FarSurfaceReads: Sendable {
+        var cells: Set<Int>
+        var values: [Int: Float]
+
+        func agree(with lookup: [Int: Float]) -> Bool {
+            cells.allSatisfy { lookup[$0] == values[$0] }
+        }
+    }
+
+    /// Collects `FarSurfaceReads` while views are worked out (`endsSpace`).
+    private final class FarSurfaceReadLog {
+        private(set) var cells: Set<Int> = []
+        private(set) var values: [Int: Float] = [:]
+
+        func note(_ cell: Int, _ value: Float?) {
+            guard cells.insert(cell).inserted else { return }
+            values[cell] = value
+        }
+
+        var reads: FarSurfaceReads { FarSurfaceReads(cells: cells, values: values) }
+    }
+
+    /// Drops every kept view unless the basis they were worked out on is the current one.
+    private mutating func prepareRebuildViews() {
+        let basis = RebuildViewBasis(wall: wall, leftEnd: leftEnd, rightEnd: rightEnd, limitEnds: limitEnds, heightError: heightError)
+        guard !reusesRebuildViews || rebuildViews.basis != basis else { return }
+        rebuildViews = RebuildViewCache(basis: reusesRebuildViews ? basis : nil)
+    }
+
+    private mutating func rebuildBandViews(_ index: Int) -> [Sighting] {
+        if let kept = keptViews(index, \.bands) { return kept }
+        let log = reusesRebuildViews ? FarSurfaceReadLog() : nil
+        let views = visibleCells(from: observedCameras[index], depth: observedDepths[index], reads: log)
+        keep(views, reads: log, at: index, \.bands)
+        return views
+    }
+
+    private mutating func rebuildDepthRowViews(_ index: Int) -> [DepthRowView] {
+        if let kept = keptViews(index, \.depthRows) { return kept }
+        let log = reusesRebuildViews ? FarSurfaceReadLog() : nil
+        let views = depthRowViews(from: observedCameras[index], depth: observedDepths[index], reads: log)
+        keep(views, reads: log, at: index, \.depthRows)
+        return views
+    }
+
+    private mutating func rebuildPastLimitViews(_ index: Int) -> [PastLimitCellView] {
+        if let kept = keptViews(index, \.pastLimits) { return kept }
+        let log = reusesRebuildViews ? FarSurfaceReadLog() : nil
+        let views = pastLimitViews(from: observedCameras[index], depth: observedDepths[index], reads: log)
+        keep(views, reads: log, at: index, \.pastLimits)
+        return views
+    }
+
+    /// The kept views of the frame at `index`, when they were worked out from its current camera
+    /// and depth and the far-surface lookup agrees at every cell they consulted.
+    private mutating func keptViews<Value: Sendable>(_ index: Int, _ part: KeyPath<FrameViews, KeptViews<Value>?>) -> Value? {
+        guard reusesRebuildViews, let frame = rebuildViews.frames[index],
+              frame.camera == observedCameras[index], frame.depth == observedDepths[index],
+              let kept = frame[keyPath: part], kept.reads.agree(with: farSurfaceByCell) else { return nil }
+        rebuildViewCounts.reused += 1
+        return kept.value
+    }
+
+    private mutating func keep<Value: Sendable>(
+        _ value: Value, reads log: FarSurfaceReadLog?, at index: Int, _ part: WritableKeyPath<FrameViews, KeptViews<Value>?>
+    ) {
+        rebuildViewCounts.computed += 1
+        guard let log else { return }
+        let camera = observedCameras[index], depth = observedDepths[index]
+        var frame = rebuildViews.frames[index].flatMap { $0.camera == camera && $0.depth == depth ? $0 : nil }
+            ?? FrameViews(camera: camera, depth: depth)
+        frame[keyPath: part] = KeptViews(value: value, reads: log.reads)
+        rebuildViews.frames[index] = frame
+    }
+
+    /// Test seam: the stored fields in which this map's state differs from `other`'s, leaving out
+    /// the rebuild view cache, its counts and `reusesRebuildViews`. Empty when every reader of
+    /// either map, now or after any later change, gets the same answers.
+    func stateDifferences(from other: CoverageMap) -> [String] {
+        var differing: [String] = []
+        func compare<T: Equatable>(_ name: String, _ a: T, _ b: T) {
+            if a != b { differing.append(name) }
+        }
+        compare("wall", wall, other.wall)
+        compare("config", config, other.config)
+        compare("leftEnd", leftEnd, other.leftEnd)
+        compare("rightEnd", rightEnd, other.rightEnd)
+        compare("limitEnds", limitEnds, other.limitEnds)
+        compare("revision", revision, other.revision)
+        compare("heightError", heightError, other.heightError)
+        compare("cells", cells, other.cells)
+        compare("depthCells", depthCells, other.depthCells)
+        compare("pastLimitCells", pastLimitCells, other.pastLimitCells)
+        compare("pendingShift", pendingShift, other.pendingShift)
+        compare("observedCameras", observedCameras, other.observedCameras)
+        compare("observedDepths", observedDepths, other.observedDepths)
+        compare("overheadCameras", overheadCameras, other.overheadCameras)
+        compare("observedTimes", observedTimes, other.observedTimes)
+        compare("observedSegments", observedSegments, other.observedSegments)
+        compare("pathSegment", pathSegment, other.pathSegment)
+        compare("depthHidden", depthHidden, other.depthHidden)
+        compare("depthPastSpace", depthPastSpace, other.depthPastSpace)
+        compare("pastLimitHidden", pastLimitHidden, other.pastLimitHidden)
+        compare("farSurfaceByCell", farSurfaceByCell, other.farSurfaceByCell)
+        compare("farSurface", farSurface, other.farSurface)
+        compare("withdrawnCells", withdrawnCells, other.withdrawnCells)
+        return differing
     }
 }
 

@@ -35,6 +35,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>House Scan uses the camera to measure the outside wall around your electric meter.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>House Scan connects to a House Scan server on your local network only when a developer has set it up for testing.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>House Scan records your phone's motion and air pressure while you scan and saves them with the scan. The readings stay on this phone unless you share the scan.</string>
 	<key>UIApplicationSceneManifest</key>

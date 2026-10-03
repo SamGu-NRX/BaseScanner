@@ -9,56 +9,29 @@ protocol ResultClient: AnyObject {
     func submit(scene: Data, progress: @escaping @Sendable (Double) -> Void) async throws -> Data
 }
 
-/// Posts scene.json to the placement server: `POST {serverURL}/v1/placements` with the JSON as
-/// the body and `Content-Type: application/json`. Only the JSON goes: the server's solver reads no
-/// photos and skips the image check for a bare scene.json, so the keyframes stay on the phone
-/// (and in the scan folder's `scan.zip`, which leaves only if the homeowner shares it). The
-/// response body is the result JSON.
+/// Posts scene.json to the placement server and returns the answer only when it names the scene
+/// sent (HouseScanKit's `PlacementHTTPClient`, which the package tests drive over real HTTP). Only
+/// the JSON goes: the keyframes stay on the phone, and in the scan folder's `scan.zip`, which
+/// leaves only if the homeowner shares it.
 @MainActor
 final class HTTPResultClient: ResultClient {
     let serverURL: URL
     let isSample = false
+    private let client: PlacementHTTPClient
 
-    init(serverURL: URL) {
+    init(serverURL: URL, session: URLSession = .shared) {
         self.serverURL = serverURL
-    }
-
-    nonisolated static func makeRequest(serverURL: URL) -> URLRequest {
-        var request = URLRequest(url: serverURL.appending(path: "v1/placements"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 120
-        return request
+        client = PlacementHTTPClient(serverURL: serverURL, session: session)
     }
 
     func submit(scene: Data, progress: @escaping @Sendable (Double) -> Void) async throws -> Data {
-        let request = Self.makeRequest(serverURL: serverURL)
-        let delegate = UploadProgressDelegate(progress: progress)
-        let (data, response) = try await URLSession.shared.upload(for: request, from: scene, delegate: delegate)
-        guard let http = response as? HTTPURLResponse else { throw UploadError.notHTTP }
-        guard (200..<300).contains(http.statusCode) else {
-            throw UploadError.server(
-                status: http.statusCode, body: String(decoding: data.prefix(300), as: UTF8.self),
-                retryAfter: http.value(forHTTPHeaderField: "Retry-After"))
-        }
-        progress(1)
-        return data
+        try await client.submit(scene: scene, progress: progress)
     }
 }
 
-enum UploadError: Error, CustomStringConvertible {
-    case notHTTP
-    case server(status: Int, body: String, retryAfter: String? = nil)
-    case missingSample
-
-    var description: String {
-        switch self {
-        case .notHTTP: "The server's answer was not HTTP."
-        case .server(let status, let body, _): "The server answered \(status): \(body)"
-        case .missingSample: "SampleResult.json is missing from the app bundle."
-        }
-    }
+/// The bundled sample is missing: a build problem, not something the server said.
+struct MissingSampleResult: Error, CustomStringConvertible {
+    var description: String { "SampleResult.json is missing from the app bundle." }
 }
 
 /// What the homeowner reads about a failed upload. Which failures are worth sending again is
@@ -66,13 +39,21 @@ enum UploadError: Error, CustomStringConvertible {
 /// log, and the screen never shows raw error text.
 enum UploadFailure {
     /// A failure while sending or reading the answer (not while packaging the scan).
-    static func state(for error: any Error) -> UploadState {
-        let kind: UploadFailureKind = if case .server(let status, _, let retryAfter) = error as? UploadError {
-            UploadFailureKind.classify(httpStatus: status, retryAfter: retryAfter)
-        } else {
-            UploadFailureKind.classify(error)
+    /// `unusableAnswers` counts the server's answers House Scan couldn't use since the scan was
+    /// sent from the review or a gap; this adds one when `error` is such an answer.
+    static func state(for error: any Error, sample: Bool, unusableAnswers: inout Int) -> UploadState {
+        // No server was asked: a missing or unreadable bundled sample is the build's problem, and
+        // the words must not say a server answered.
+        if sample {
+            return .rejected(message: "This build's sample result is missing or unreadable. Start over with a build that has a server.")
         }
-        return switch kind {
+        let kind = UploadFailureKind.classify(error)
+        if kind == .unreadableAnswer { unusableAnswers += 1 }
+        return state(for: kind, unusableAnswers: unusableAnswers)
+    }
+
+    static func state(for kind: UploadFailureKind, unusableAnswers: Int) -> UploadState {
+        switch kind {
         case .offline:
             .failed(message: "Your phone isn't connected to the internet. Your scan is saved on this phone.", offline: true)
         case .unreachable:
@@ -83,8 +64,9 @@ enum UploadFailure {
             .failed(message: busyMessage(retryAfter), offline: false)
         case .refused:
             .rejected(message: "The server couldn't use this scan. Go back to the review to check your marks, or start over.")
+        // The answer's problem, not the scan's: ask again, never "check your marks".
         case .unreadableAnswer:
-            .rejected(message: "We couldn't read the server's answer. Go back to the review and send it again, or start over.")
+            .unusableAnswer(attempts: max(unusableAnswers, 1))
         }
     }
 
@@ -115,34 +97,19 @@ enum UploadFailure {
     }
 }
 
-final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
-    private let progress: @Sendable (Double) -> Void
-
-    init(progress: @escaping @Sendable (Double) -> Void) {
-        self.progress = progress
-    }
-
-    /// Once the whole body is sent the server is working out the spot in the same request, so
-    /// report 1 and let the screen move on to "Check clearances". Before that, stop at 0.99 so
-    /// rounding never shows 100%. Holding 0.99 until the answer left the screen on "Sending
-    /// measurements, 99%" for the whole analysis (field test run 1).
-    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
-        guard totalBytesExpectedToSend > 0 else { return }
-        if totalBytesSent >= totalBytesExpectedToSend {
-            progress(1)
-        } else {
-            progress(min(0.99, Double(totalBytesSent) / Double(totalBytesExpectedToSend)))
-        }
-    }
-}
-
 /// Answers with the bundled SampleResult.json, for tests and demos without a server. The result
-/// is flagged `isSample` so the screen says it is not a real analysis.
+/// is flagged `isSample` so the screen says it is not a real analysis. It answers no particular
+/// scene (its `input_sha256` is all zeros), so it is deliberately not checked with
+/// `ResultBinding`.
 @MainActor
 final class SampleResultClient: ResultClient {
     let isSample = true
     /// Seconds the fake upload takes, so each upload state is visible in demos and UI tests.
     let pace: Double
+    /// A server answer in a JSON file that replaces the bundled sample while it is set. Only the
+    /// engine sets it, from `-sampleResultAfterSpotAnswer` and the scan's spot answers
+    /// (`ScanEngine.spotConfirm`), for UI tests.
+    var answerFile: URL?
 
     init(pace: Double) {
         self.pace = pace
@@ -154,7 +121,8 @@ final class SampleResultClient: ResultClient {
             progress(Double(step) / 4)
         }
         try await Task.sleep(for: .seconds(pace))
-        guard let url = Bundle.main.url(forResource: "SampleResult", withExtension: "json") else { throw UploadError.missingSample }
+        if let answerFile { return try Data(contentsOf: answerFile) }
+        guard let url = Bundle.main.url(forResource: "SampleResult", withExtension: "json") else { throw MissingSampleResult() }
         return try Data(contentsOf: url)
     }
 }

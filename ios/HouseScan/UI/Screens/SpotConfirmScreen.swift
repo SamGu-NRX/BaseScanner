@@ -1,11 +1,17 @@
 import SwiftUI
 
 /// The spot check before the result: one kept photo with the answer's spot and its clearance area
-/// outlined, and one question with two equal answers. A photo can claim wall and ground behind a
-/// bush, so the homeowner, who is standing there, says whether anything is in the way.
+/// outlined, and one question with three equal answers. A photo can claim wall and ground behind
+/// a bush, so the homeowner, who is standing there, says whether anything is in the way, or that
+/// they can't see or reach the area to say.
 ///
-/// The answer replaces the two buttons and stays up a moment, saying what happens next, before
-/// the engine moves on (to the result, or to checking the wall again).
+/// Without an outline (no kept photo shows the area, or there is no wall to draw it with) the
+/// area is given in words instead: where it runs beside the meter, how far out from the wall and
+/// how high up it. The question then names no outline, and no photo is shown, since a photo with
+/// nothing marked on it would leave the homeowner guessing which part of it is meant.
+///
+/// The answer replaces the buttons and stays up a moment, saying what happens next, before the
+/// engine moves on (to the result, or to checking the wall again).
 struct SpotConfirmScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -23,15 +29,17 @@ struct SpotConfirmScreen: View {
     }
 
     private func content(_ check: SpotCheck) -> some View {
-        ScrollView {
+        let outline = check.outline(on: state.wall)
+        let question = ScanCopy.spotQuestionShown(outlined: outline != nil)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 badges(check)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(ScanCopy.spotQuestion.title)
+                    Text(question.title)
                         .font(Typeface.screenTitle)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
-                    if let detail = ScanCopy.spotQuestion.detail {
+                    if let detail = question.detail {
                         Text(detail)
                             .font(Typeface.hint)
                             .foregroundStyle(Palette.muted)
@@ -40,13 +48,17 @@ struct SpotConfirmScreen: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("spot.question")
-                VStack(alignment: .leading, spacing: 10) {
-                    photo(check)
-                    Text(ScanCopy.spotArea(check.area))
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityHidden(true)
+                if let outline {
+                    VStack(alignment: .leading, spacing: 10) {
+                        outlinedPhoto(outline.photo, wall: outline.wall, check: check)
+                        Text(ScanCopy.spotArea(check.area))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Palette.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityHidden(true)
+                    }
+                } else {
+                    space(check)
                 }
                 if typeSize.isAccessibilitySize {
                     answerArea(check)
@@ -104,48 +116,76 @@ struct SpotConfirmScreen: View {
         }
     }
 
-    @ViewBuilder
-    private func photo(_ check: SpotCheck) -> some View {
-        Group {
-            if let photo = check.photo, let wall = state.wall {
-                let size = photo.projection.imageSize
-                // The sensor image shown upright (rotated 90° clockwise) at its own aspect, so
-                // filling the frame crops nothing and the projection's fill mapping holds.
-                Color.clear
-                    .aspectRatio(CGFloat(size.y / size.x), contentMode: .fit)
-                    .overlay {
-                        Image(decorative: photo.image, scale: 1, orientation: .right)
-                            .resizable()
-                            .scaledToFill()
-                    }
-                    .overlay {
-                        SpotOutline(photo: photo, wall: wall, check: check)
-                            .opacity(outlineShown ? 1 : 0)
-                    }
-                    .clipShape(.rect(cornerRadius: Metrics.cardRadius, style: .continuous))
-                    // Tall enough to judge, short enough that the question and the photo share
-                    // the screen with the answers on a 6.1 in phone.
-                    .frame(maxHeight: 400)
-                    .frame(maxWidth: .infinity)
-            } else {
-                // No kept photo shows the spot from the front: the homeowner looks at the wall.
-                Label("No photo shows this spot well. Take a look at the wall itself.", systemImage: "photo")
-                    .font(Typeface.hint)
-                    .foregroundStyle(Palette.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Palette.surface, in: .rect(cornerRadius: Metrics.cardRadius, style: .continuous))
+    private func outlinedPhoto(_ photo: SpotCheck.Photo, wall: WallGeometry, check: SpotCheck) -> some View {
+        let size = photo.projection.imageSize
+        // The sensor image shown upright (rotated 90° clockwise) at its own aspect, so filling
+        // the frame crops nothing and the projection's fill mapping holds.
+        return Color.clear
+            .aspectRatio(CGFloat(size.y / size.x), contentMode: .fit)
+            .overlay {
+                Image(decorative: photo.image, scale: 1, orientation: .right)
+                    .resizable()
+                    .scaledToFill()
             }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(check.photo == nil ? "No photo of this spot" : "Photo of your wall")
-        .accessibilityValue(ScanCopy.spotPhotoDescription(check))
-        .accessibilityAddTraits(check.photo == nil ? [] : .isImage)
-        .accessibilityIdentifier("spot.photo")
+            .overlay {
+                SpotOutline(photo: photo, wall: wall, check: check)
+                    .opacity(outlineShown ? 1 : 0)
+            }
+            .clipShape(.rect(cornerRadius: Metrics.cardRadius, style: .continuous))
+            // Tall enough to judge, short enough that the question and the photo share the
+            // screen with the answers on a 6.1 in phone.
+            .frame(maxHeight: 400)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Photo of your wall")
+            .accessibilityValue(ScanCopy.spotPhotoDescription(check))
+            .accessibilityAddTraits(.isImage)
+            .accessibilityIdentifier("spot.photo")
     }
 
-    /// The two answers, or once answered, what happens next.
+    /// The area in words, in the photo's place: the three edges the outline would draw. Each
+    /// line is its own VoiceOver element, read with the units spelled out, so the rendered lines
+    /// stay visible to the accessibility audit and the UI tests.
+    private func space(_ check: SpotCheck) -> some View {
+        let shown = ScanCopy.spotSpace(check)
+        let spoken = ScanCopy.spotSpace(check, spoken: true)
+        return VStack(alignment: .leading, spacing: 10) {
+            // One element read as the title alone: VoiceOver names the "eye" symbol "Show", and
+            // the identifier landed on it (CI run 37108821815 read the title as "Show").
+            Label {
+                Text(ScanCopy.spotSpaceTitle)
+            } icon: {
+                Image(systemName: "eye").accessibilityHidden(true)
+            }
+            .font(Typeface.caption)
+            .foregroundStyle(Palette.muted)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("spot.area.title")
+            VStack(alignment: .leading, spacing: 6) {
+                spaceLine(shown.along, spoken: spoken.along, id: "along")
+                spaceLine(shown.out, spoken: spoken.out, id: "out")
+                spaceLine(shown.up, spoken: spoken.up, id: "up")
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surface, in: .rect(cornerRadius: Metrics.cardRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("spot.area")
+    }
+
+    /// In the primary color, as the question: Ink stays near-black in dark mode, where Surface
+    /// turns dark, and this screen follows the phone's appearance.
+    private func spaceLine(_ text: String, spoken: String, id: String) -> some View {
+        Text(text)
+            .font(Typeface.hint)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel(spoken)
+            .accessibilityIdentifier("spot.area.\(id)")
+    }
+
+    /// The answers, or once answered, what happens next.
     @ViewBuilder
     private func answerArea(_ check: SpotCheck) -> some View {
         if let answer = check.answer {
@@ -157,18 +197,33 @@ struct SpotConfirmScreen: View {
         }
     }
 
-    /// Two equal answers on a white card, so neither reads as the default.
+    /// Three equal answers on a white card, so none reads as the default. "I can't check this
+    /// area" has the same size and weight as the other two: a homeowner who can't see the area
+    /// should find saying so as easy as guessing.
     private var answers: some View {
         VStack(spacing: 10) {
-            AnswerButton(title: ScanCopy.spotClear, selected: false) { actions.answerSpotCheck(clear: true) }
+            AnswerButton(title: ScanCopy.spotClear, selected: false) { actions.answerSpotCheck(.clear) }
                 .accessibilityHint(ScanCopy.spotClearHint)
                 .accessibilityIdentifier("action.spotClear")
-            AnswerButton(title: ScanCopy.spotSomethingThere, selected: false) { actions.answerSpotCheck(clear: false) }
+            AnswerButton(title: ScanCopy.spotSomethingThere, selected: false) { actions.answerSpotCheck(.somethingThere) }
                 .accessibilityHint(ScanCopy.spotSomethingThereHint)
                 .accessibilityIdentifier("action.spotSomethingThere")
+            AnswerButton(title: ScanCopy.spotCannotCheck, selected: false) { actions.answerSpotCheck(.cannotCheck) }
+                .accessibilityHint(ScanCopy.spotCannotCheckHint)
+                .accessibilityIdentifier("action.spotCannotCheck")
         }
         .padding(12)
         .background(Palette.surface, in: .rect(cornerRadius: 18, style: .continuous))
+    }
+}
+
+extension SpotCheck {
+    /// The photo and the wall to outline the area on it with, or nil when either is missing.
+    /// The screen's question, picture and VoiceOver text follow this one answer, and so does
+    /// the guidance log's record of what was shown (`ScanEngine.presentAnswer`).
+    func outline(on wall: WallGeometry?) -> (photo: Photo, wall: WallGeometry)? {
+        guard let photo = self.photo, let wall else { return nil }
+        return (photo, wall)
     }
 }
 
@@ -179,7 +234,7 @@ private struct Answered: View {
     var body: some View {
         let copy = ScanCopy.spotAnswered(answer)
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: answer == .clear ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
+            Image(systemName: Self.symbol(answer))
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(answer == .clear ? Palette.passInk : Palette.reviewInk)
                 .accessibilityHidden(true)
@@ -200,6 +255,16 @@ private struct Answered: View {
         .background(Palette.surface, in: .rect(cornerRadius: 18, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("spot.answered")
+    }
+
+    /// A tick for clear, the check-again arrows for an obstruction, and an eye struck through for
+    /// an area nobody checked, as on the result's notice.
+    private static func symbol(_ answer: SpotCheckAnswer) -> String {
+        switch answer {
+        case .clear: "checkmark.circle.fill"
+        case .somethingThere: "arrow.triangle.2.circlepath"
+        case .cannotCheck: "eye.slash"
+        }
     }
 }
 

@@ -32,6 +32,10 @@ extension ScanEngine {
         /// `photoIDs` hold store ids ("meter_close"); `writePacket` swaps in packet ids.
         var marks: [PacketMark]
         var guidance: [PacketGuidanceEntry]
+        /// The wall the marks and guidance were placed with, in world meters, captured with them,
+        /// so a later write that adds guidance places it in the same frame (`withCurrentGuidance`).
+        var sceneWall: SceneWall
+        /// The scene.json the upload sent, attached once serialized (`UploadPackaging`).
         var scene: Data
         /// The camera's frame rate live; nil on a replay, whose rate comes from its frames.
         var trajectoryRate: Double?
@@ -49,8 +53,9 @@ extension ScanEngine {
         var frames: [ReplayFrame]
     }
 
-    /// Nil before there is a wall: the meter frame is built from it.
-    func packetInputs(scene: Data, mesh: LiveCapture.MeshSnapshot?) -> PacketInputs? {
+    /// Nil before there is a wall: the meter frame is built from it. The scene is attached by the
+    /// upload once it is serialized from the same capture (`captureUpload`).
+    func packetInputs(mesh: LiveCapture.MeshSnapshot?) -> PacketInputs? {
         guard let map = coverage else { return nil }
         let wall = map.wall
         // The wall in world meters, as scene.json's wall type describes it, for the marks.
@@ -93,10 +98,20 @@ extension ScanEngine {
             },
             marks: packetMarks(map, wall: sceneWall, frame: frame),
             guidance: guidanceLog.entries.map { Self.packetEntry($0, wall: sceneWall, frame: frame) },
-            scene: scene,
+            sceneWall: sceneWall,
+            scene: Data(),
             trajectoryRate: settings.map { Double($0.framesPerSecond) },
             motionStreams: motionRunsLive ? motionAvailable : []
         )
+    }
+
+    /// `inputs` with the guidance log as it is now, placed with the wall and meter frame the
+    /// inputs were captured with: what the spot check's answer adds to an upload's packet, without
+    /// rereading the engine's geometry since.
+    func withCurrentGuidance(_ inputs: PacketInputs) -> PacketInputs {
+        var inputs = inputs
+        inputs.guidance = guidanceLog.entries.map { Self.packetEntry($0, wall: inputs.sceneWall, frame: inputs.meterFrame) }
+        return inputs
     }
 
     /// `utsname.machine`, such as "iPhone16,1": the hardware, never the phone's name. "arm64" in

@@ -4,13 +4,19 @@ import OSLog
 import simd
 
 extension ScanEngine {
-    /// scene.json for the current scan (contract C1), with the LiDAR mesh's measurements on
-    /// phones that have one.
+    /// scene.json for the current scan (contract C1), without mesh measurements: the autopilot's
+    /// gate copy. The upload captures the scene once and measures the mesh against that capture
+    /// (`captureUpload`, `UploadPackaging`).
+    func sceneJSON() throws -> Data {
+        try SceneExport.jsonData(sceneInput())
+    }
+
+    /// The scan's scene as it stands now, without mesh measurements, read in this one turn.
     ///
     /// The scene frame is the AR world frame moved down so the ground at the wall is y = 0: the
     /// server reads heights (meter.pos y, pose translations) as height above that ground, and
     /// scene.json has no field for the ground's height otherwise.
-    func sceneJSON(mesh: MeshMeasurements = MeshMeasurements()) throws -> Data {
+    func sceneInput() throws -> SceneInput {
         guard let map = coverage else { throw ExportError.noWall }
         let wall = map.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
@@ -74,13 +80,23 @@ extension ScanEngine {
             ),
             keyframes: keyframes,
             stills: store.stills,
-            // Written without plus_minus_ft: the server takes its mesh error for both.
-            meshFacing: mesh.facing,
-            meshOverheads: mesh.overheads,
+            // The mesh's measurements are filled in once measured (`UploadPackaging`). Written
+            // without plus_minus_ft: the server takes its mesh error for both.
             // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
             groundType: state.groundAnswer.flatMap(Self.sceneGroundType)
         )
-        return try SceneExport.jsonData(input)
+        return input
+    }
+
+    /// Everything one upload sends, read in one main-actor turn: the scene, the wall in world
+    /// meters, the LiDAR mesh and the capture packet's inputs. Nothing after this rereads the
+    /// engine's geometry for this upload, so a ground or anchor correction while the mesh is
+    /// measured can't mix two walls into its scene or packet.
+    func captureUpload() throws -> UploadPackaging<PacketInputs> {
+        let scene = try sceneInput()
+        guard let map = coverage else { throw ExportError.noWall }
+        let meshSnapshot = liveCapture?.meshSnapshot()
+        return UploadPackaging(scene: scene, worldWall: map.wall, mesh: meshSnapshot?.mesh, packet: packetInputs(mesh: meshSnapshot))
     }
 
     static func sceneGroundType(_ answer: GroundAnswer) -> SceneGroundType? {
@@ -130,20 +146,6 @@ extension ScanEngine {
         let low = min(map.leftEnd ?? min(seen?.lowerBound ?? -1, -1), -0.1)
         let high = max(map.rightEnd ?? max(seen?.upperBound ?? 1, 1), 0.1)
         return low...high
-    }
-
-    /// What the LiDAR mesh measured over the exported stretch: the gap from the wall out to
-    /// whatever faces it, and the clear height under anything overhead, each per stretch of s in
-    /// meters. Empty without a mesh.
-    struct MeshMeasurements: Sendable {
-        var facing: [ObservedSpan] = []
-        var overheads: [ObservedSpan] = []
-    }
-
-    /// Measures a world-space mesh (meters) against the wall (world meters) over `span`, the
-    /// exported stretch of s.
-    nonisolated static func measure(_ mesh: TriangleMesh, wall: WallFrame, over span: ClosedRange<Float>) -> MeshMeasurements {
-        MeshMeasurements(facing: mesh.facingSpans(wall: wall, over: span), overheads: mesh.overheadSpans(wall: wall, over: span))
     }
 
     /// Error of the chest-height ground guess (camera height minus 1.4 m), meters. Phones held
@@ -250,26 +252,28 @@ extension ScanEngine {
                 needsPerson: check.needsPerson,
                 measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters),
                 comparison: check.comparison.map(Self.comparison),
+                reviewThreshold: check.reviewThresholdFt.map(meters), reviewBandApplies: check.reviewBandApplies,
                 settledBy: result.evidenceIndex(settling: check.id).map(Self.missingID)
             )
         }
 
-        // A run's start_ft is a range of battery LEFT edges, so the wall it describes reaches one
-        // battery width past its last start. The spot carries the size, or after a reject the
-        // nearest spot, which the server sized the same way. With neither, the zone is drawn over
-        // the starts alone at 0.3 m deep, which understates it.
-        let sized = spot ?? nearestSpot
-        let depth = sized?.depth ?? 0.3
-        let width = sized.map { $0.span.upperBound - $0.span.lowerBound } ?? 0
-        let clearances = result.sweep.enumerated().map { index, run in
-            let first = meters(min(run.startFt.x, run.startFt.y))
-            let last = meters(max(run.startFt.x, run.startFt.y))
+        // The spot carries the battery's size, or without one the nearest spot, which the server
+        // sized the same way. With neither, `sweepZones` gives no zones: the result keeps its
+        // wall, summary and reasons, and no view draws floor the server never sized.
+        let sized = (spot ?? nearestSpot).map {
+            ResultMarkLayout.BatterySize(width: $0.span.upperBound - $0.span.lowerBound, depth: $0.depth)
+        }
+        let zones = ResultMarkLayout.sweepZones(
+            starts: result.sweep.map { SIMD2(meters($0.startFt.x), meters($0.startFt.y)) }, battery: sized)
+        // One zone per run, or none.
+        let clearances = zip(result.sweep, zones).enumerated().map { index, pair in
+            let (run, zone) = pair
             return ClearanceZone(
                 id: "sweep-\(index)",
                 label: (run.failing + run.unsure).joined(separator: ", "),
                 outcome: Self.outcome(run.outcome),
-                span: first...(last + width),
-                depth: depth
+                span: zone.span,
+                depth: zone.depth
             )
         }
 

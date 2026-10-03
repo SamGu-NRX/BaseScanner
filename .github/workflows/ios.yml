@@ -38,8 +38,12 @@ jobs:
     # macos-26 (arm64) is the newest GA macOS image. The xcode-27 image is still a preview.
     runs-on: macos-26
     # Beta run 36302099002 took 43 minutes before the spot-confirmation and review checks
-    # were added. Leave room for those checks without dropping the every-state audit.
-    timeout-minutes: 60
+    # were added. Full run 36832282114 (#190) then took 58 of 60 minutes, and the ground
+    # freshness UI tests add about 161 s more (run 36744881974), so 60 would cut the
+    # every-state audit short. 75 left room until the 2026-10-03 candidate's 86 UI cases:
+    # run 37121918073 attempt 2 spent 10 min 34 s before the UI step and 64 min 39 s in it,
+    # and the cap stopped it after 76 cases with 0 failures. 90 runs all of them.
+    timeout-minutes: 90
     env:
       # Newest stable Xcode on macos-26 per images/macos/macos-26-arm64-Readme.md (image 20260907).
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer

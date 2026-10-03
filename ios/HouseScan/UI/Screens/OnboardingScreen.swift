@@ -7,7 +7,9 @@ struct OnboardingScreen: View {
     let actions: any ScanActions
 
     @State private var page = 0
+    @State private var showsSavedScans = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private let pages: [OnboardingPage] = [
         OnboardingPage(
@@ -45,19 +47,30 @@ struct OnboardingScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
-                DeveloperOptionsButton()
-                Spacer()
-                if page < pages.count - 1 {
-                    Button("Skip") {
-                        // Reduce Motion: the page changes in place, without sliding past the others.
-                        withAnimation(reduceMotion ? nil : Motion.screen) { page = pages.count - 1 }
+            Group {
+                if typeSize.isAccessibilitySize {
+                    // The replay badge, Practice label and Skip squeezed the label into
+                    // single syllables at AX5. Give Practice its own full-width row, and Saved
+                    // scans too.
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+                            Spacer()
+                            skipButton
+                        }
+                        SavedScansButton { showsSavedScans = true }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        DeveloperOptionsButton()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .font(Typeface.hint.weight(.semibold))
-                    .foregroundStyle(Palette.signalText)
-                    .frame(minWidth: Metrics.minTarget, minHeight: Metrics.minTarget)
-                    .accessibilityIdentifier("action.onboardingSkip")
+                } else {
+                    HStack {
+                        ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+                        DeveloperOptionsButton()
+                        Spacer()
+                        SavedScansButton { showsSavedScans = true }
+                        skipButton
+                    }
                 }
             }
             .frame(minHeight: Metrics.minTarget)
@@ -70,6 +83,9 @@ struct OnboardingScreen: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            // At AX5 a scrolled page's text showed under the page dots (screenshots at e7031990).
+            // Clipped here and covered by the footer's background below, a page can't draw there.
+            .clipped()
 
             VStack(spacing: 16) {
                 PageDots(count: pages.count, current: page)
@@ -78,17 +94,17 @@ struct OnboardingScreen: View {
                         Button {
                             actions.finishOnboarding()
                         } label: {
-                            Label("Allow camera", systemImage: "camera.fill")
+                            Text("\(Image(systemName: "camera.fill")) Allow camera")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.vertical, 8)
                         }
                         .buttonStyle(.primary)
-                        .accessibilityHint("Your phone will ask to use the camera, then Motion & Fitness")
+                        .accessibilityLabel("Allow camera")
+                        .accessibilityHint("Your phone may ask to use the camera, then Motion & Fitness")
                         .accessibilityIdentifier("action.finishOnboarding")
-                        Text("Your phone will ask to use the camera, then Motion & Fitness, which lets it record air pressure with your scan.")
-                            .font(.footnote)
-                            .foregroundStyle(Palette.muted)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("onboarding.permissions")
+                        if !typeSize.isAccessibilitySize {
+                            OnboardingPermissionNote()
+                        }
                     }
                     .transition(.opacity)
                 } else {
@@ -102,9 +118,29 @@ struct OnboardingScreen: View {
             }
             .animation(Motion.screen, value: page)
             .padding(.horizontal, 24)
+            // Space between the last line of a scrolled page and the dots.
+            .padding(.top, 12)
             .padding(.bottom, 12)
+            // Opaque, so nothing drawn past the page view's edge shows under the dots.
+            .background(Palette.canvas)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("onboarding.footer")
         }
         .background(Palette.canvas.ignoresSafeArea())
+        .savedScansSheet(isPresented: $showsSavedScans)
+    }
+
+    @ViewBuilder
+    private var skipButton: some View {
+        if page < pages.count - 1 {
+            Button("Skip") {
+                withAnimation(reduceMotion ? nil : Motion.screen) { page = pages.count - 1 }
+            }
+            .font(Typeface.hint.weight(.semibold))
+            .foregroundStyle(Palette.signalText)
+            .frame(minWidth: Metrics.minTarget, minHeight: Metrics.minTarget)
+            .accessibilityIdentifier("action.onboardingSkip")
+        }
     }
 
     /// The moves page quotes the walk's own cards (`ScanCopy`), so a homeowner recognises each
@@ -160,6 +196,7 @@ private struct OnboardingPage {
 private struct OnboardingPageView: View {
     var page: OnboardingPage
     var isActive: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ScrollView {
@@ -167,6 +204,11 @@ private struct OnboardingPageView: View {
                 if page.art == .safety {
                     text
                     SafetyArt()
+                    // At AX5 the note filled the fixed footer and squeezed out the safety
+                    // content. Keep it in the page's scroll area at accessibility sizes.
+                    if typeSize.isAccessibilitySize {
+                        OnboardingPermissionNote()
+                    }
                 } else {
                     Group {
                         if page.art == .walk {
@@ -192,6 +234,7 @@ private struct OnboardingPageView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .accessibilityIdentifier("onboarding.page")
     }
 
     private var text: some View {
@@ -223,6 +266,17 @@ private struct OnboardingPageView: View {
                     .accessibilityIdentifier("onboarding.privacy")
             }
         }
+    }
+}
+
+private struct OnboardingPermissionNote: View {
+    var body: some View {
+        Text("Your phone may ask to use the camera, then Motion & Fitness, which lets it record air pressure with your scan.")
+            .font(.footnote)
+            .foregroundStyle(Palette.muted)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("onboarding.permissions")
     }
 }
 
@@ -303,11 +357,18 @@ private struct WalkArt: View {
                         .position(x: size.width * (0.14 + 0.72 * phase), y: size.height * 0.72)
                     Text("About 2 min")
                         .font(Typeface.caption)
+                        // The drawing is a fixed 260 pt and hidden from VoiceOver, and the page's
+                        // first sentence says "about 2 minutes" at full size. Past this size the
+                        // caption covered the meter it is drawn beside.
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(Palette.ink, in: .capsule)
-                        .position(x: size.width * 0.82, y: 26)
+                        // Anchor the edge, not the centre: a growing caption otherwise
+                        // extends past the illustration at accessibility text sizes.
+                        .padding(12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 }
             }
         }

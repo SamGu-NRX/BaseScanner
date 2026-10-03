@@ -103,6 +103,19 @@ import Testing
         #expect(Self.run(walking).last! == .movingFast)
     }
 
+    /// Moving fast while aiming builds no spell, so the next walking step starts clean: a calm
+    /// frame says nothing, and walking fast again needs its own 0.7 s before "Slow down".
+    @Test func movingFastWhileAimingDoesntCarryIntoTheNextStep() {
+        var debouncer = CoachingDebouncer()
+        let aiming = Self.times(for: 2).map { Frame(time: $0, skip: .movingFast, aiming: true) }
+        #expect(Self.run(aiming, on: &debouncer).allSatisfy { $0 == nil })
+        #expect(debouncer.update(time: 2, skip: .redundant, meanLuma: 128, aiming: false) == nil)
+        let walking = Self.times(from: 2.1, for: 1).map { Frame(time: $0, skip: .movingFast) }
+        let said = Self.run(walking, on: &debouncer)
+        #expect(said.prefix(7).allSatisfy { $0 == nil })
+        #expect(said.last! == .movingFast)
+    }
+
     /// A gap request to walk the stretch far enough out asks for walking, so hurrying along it is
     /// still told to slow down. The other requests ask the homeowner to stand and aim.
     @Test func aWalkOutRequestStillSaysSlowDown() {
