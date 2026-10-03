@@ -15,10 +15,10 @@ import Testing
 
     /// The verdict for the circle's ray from `phone` toward `target`.
     static func aim(
-        toward target: SIMD3<Float>, askedLeft: Bool = false, groundError: Float = 0, lostPlace: Bool = false
+        toward target: SIMD3<Float>, askedLeft: Bool = false, groundError: Float = 0, trackingNormal: Bool = true
     ) -> EndAim.Verdict {
         let hit = wall.intersectWall(Ray(origin: phone, direction: simd_normalize(target - phone)))
-        return EndAim.verdict(hit: hit, camera: phone, wall: wall, reach: reach, groundError: groundError, askedLeft: askedLeft, lostPlace: lostPlace)
+        return EndAim.verdict(hit: hit, camera: phone, wall: wall, reach: reach, groundError: groundError, askedLeft: askedLeft, trackingNormal: trackingNormal)
     }
 
     static func endS(_ verdict: EndAim.Verdict) -> Float? {
@@ -66,8 +66,14 @@ import Testing
         #expect(Self.aim(toward: SIMD3(0, 1.75, 5)) == .offWall)
     }
 
-    @Test func aLostPlaceWinsOverAGoodHit() {
-        #expect(Self.aim(toward: SIMD3(2, 1, 0), lostPlace: true) == .lostPlace)
-        #expect(Self.aim(toward: SIMD3(1, 0, 1), lostPlace: true) == .lostPlace)
+    @Test func limitedTrackingWinsOverAGoodHit() {
+        #expect(Self.aim(toward: SIMD3(2, 1, 0), trackingNormal: false) == .trackingLimited)
+        #expect(Self.aim(toward: SIMD3(1, 0, 1), trackingNormal: false) == .trackingLimited)
+    }
+
+    /// The meter's own column belongs to the right, as `hit.s < 0` decides left everywhere else.
+    @Test func theMetersColumnIsTheRight() {
+        #expect(Self.endS(Self.aim(toward: SIMD3(0, 1, 0))) != nil)
+        #expect(Self.aim(toward: SIMD3(0, 1, 0), askedLeft: true) == .otherSide)
     }
 }

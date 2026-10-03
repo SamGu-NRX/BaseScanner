@@ -15,8 +15,9 @@ public enum EndAim {
     public enum Verdict: Sendable, Equatable {
         /// The end goes here.
         case end(WallPoint)
-        /// The phone doesn't know where it is yet: no hit can be trusted.
-        case lostPlace
+        /// Tracking isn't normal: ARKit's pose may be off, so the hit can't be trusted. Feature
+        /// marks and the next wall refuse the same way, and `WalkedEnd` caps an end measured then.
+        case trackingLimited
         /// The ray meets no wall, meets it below the ground, or farther along it than a view
         /// counts for.
         case offWall
@@ -26,13 +27,13 @@ public enum EndAim {
 
     /// The verdict for `hit`, where the circle's ray meets `wall` (nil when it doesn't), with the
     /// phone at `camera`. `askedLeft` is true when the card asks about the left end (negative s).
-    /// `reach` and `groundError` are as for `ObjectTap.refusal`. `lostPlace` wins over everything:
-    /// a hit from a phone that has lost its place is somewhere else in the world.
+    /// `reach` and `groundError` are as for `ObjectTap.refusal`. Limited tracking wins over
+    /// everything: the hit may be somewhere else in the world.
     public static func verdict(
         hit: WallPoint?, camera: SIMD3<Float>, wall: WallFrame, reach: Float, groundError: Float,
-        askedLeft: Bool, lostPlace: Bool
+        askedLeft: Bool, trackingNormal: Bool
     ) -> Verdict {
-        if lostPlace { return .lostPlace }
+        guard trackingNormal else { return .trackingLimited }
         guard let hit, ObjectTap.refusal(hit, camera: camera, wall: wall, reach: reach, groundError: groundError) == nil else {
             return .offWall
         }

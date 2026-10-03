@@ -101,18 +101,15 @@ extension ScanEngine {
     /// Where "Wall ends here" at the circle puts the end the card asks for on `asked`, or why it
     /// can't (`EndAim`, B-06). The circle is the middle of the view, which is the sensor image's
     /// middle whatever the view's size. Shared by the button and its preview, so the tape never
-    /// shows an end the button would refuse. The phone's place counts as unknown while it is lost
-    /// or ARKit is still starting; moving fast or a plain surface keeps it, as for marks.
+    /// shows an end the button would refuse. Only normal tracking counts, as for feature marks.
     func circleEnd(asked: WallSide, frame: SourceFrame, map: CoverageMap) -> Result<WallPoint, EndMarkRefusal> {
-        var lostPlace = frame.tracking.hasLostItsPlace
-        if case .limited(.initializing) = frame.tracking { lostPlace = true }
         let hit = map.wall.intersectWall(frame.camera.ray(throughPixel: frame.camera.imageSize / 2))
         switch EndAim.verdict(
             hit: hit, camera: frame.camera.position, wall: map.wall, reach: map.config.maxDistance,
-            groundError: map.heightError, askedLeft: asked == .left, lostPlace: lostPlace
+            groundError: map.heightError, askedLeft: asked == .left, trackingNormal: frame.tracking == .normal
         ) {
         case .end(let point): return .success(point)
-        case .lostPlace: return .failure(.trackingNotReady)
+        case .trackingLimited: return .failure(.trackingNotReady)
         case .offWall: return .failure(.noWall)
         case .otherSide: return .failure(.otherSide(asked == .left ? .right : .left))
         }

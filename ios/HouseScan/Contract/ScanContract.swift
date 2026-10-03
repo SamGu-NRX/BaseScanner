@@ -562,7 +562,7 @@ enum EndMarkRefusal: Error, Equatable, Sendable {
     case noWall
     /// The circle is on the wall on this side of the meter, not the side the card asks about.
     case otherSide(WallSide)
-    /// The phone has lost its place, or ARKit is still starting.
+    /// Tracking isn't normal, as for a feature mark (`MarkRefusal.trackingNotReady`).
     case trackingNotReady
 }
 
