@@ -201,6 +201,14 @@ final class DemoEngine: ScanActions {
         if let raw = value("-uiDemoSpotAnswered"), state.phase == .spotConfirm {
             state.spotCheck?.answer = raw == "somethingThere" ? .somethingThere : .clear
         }
+        // The spot check without an outline: no kept photo shows the area (`-uiDemoSpotNoPhoto`),
+        // or a photo but no wall to draw the area on it with (`-uiDemoSpotNoWall`).
+        if arguments.contains("-uiDemoSpotNoPhoto"), state.phase == .spotConfirm {
+            state.spotCheck?.photo = nil
+        }
+        if arguments.contains("-uiDemoSpotNoWall"), state.phase == .spotConfirm {
+            state.wall = nil
+        }
         if arguments.contains("-uiDemoFollowUp") {
             enterFollowUp(at: state.phase)
         }

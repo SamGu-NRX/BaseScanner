@@ -36,6 +36,8 @@
 				"Fixtures/results/no-clean-spot.json",
 				Fixtures/results/pass.json,
 				"Fixtures/results/reject-nearest.json",
+				"Fixtures/results/spot-left.json",
+				"Fixtures/results/spot-straddle.json",
 				"Fixtures/results/unsure-view.json",
 				"Fixtures/synthetic-wall",
 				"Fixtures/synthetic-wall-lidar",
