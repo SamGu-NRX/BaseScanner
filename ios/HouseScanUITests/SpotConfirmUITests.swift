@@ -173,12 +173,44 @@ final class SpotConfirmUITests: XCTestCase {
         let refused = launchResult(answer: "somethingThere", [])
         XCTAssertTrue(element(refused, "result.spotRefused").waitForExistence(timeout: 10), "Something's there lost its notice")
         XCTAssertFalse(element(refused, "result.spotNotChecked").exists)
+        XCTAssertFalse(element(refused, "result.scanNotChecked").exists)
         refused.terminate()
         let clear = launchResult(answer: "clear", [])
         XCTAssertTrue(element(clear, "result.headline").waitForExistence(timeout: 10))
-        XCTAssertFalse(element(clear, "result.spotRefused").exists)
-        XCTAssertFalse(element(clear, "result.spotNotChecked").exists)
+        for id in ["result.spotRefused", "result.spotNotChecked", "result.scanNotChecked"] {
+            XCTAssertFalse(element(clear, id).exists, "It's clear shows \(id)")
+        }
         clear.terminate()
+    }
+
+    /// After "I can't check this area", an answer without a spot (Fixtures/results/
+    /// reject-nearest.json) still says an area along the wall went unchecked, without "this spot";
+    /// at the largest text size too. After "Something's there" it says nothing of the kind.
+    @MainActor
+    func testAResultWithoutASpotStillSaysAnAreaWasNotChecked() throws {
+        let noSpot = ["-uiDemoResultFile", Self.resultFile("reject-nearest")]
+        let text = "You couldn't check an area along this wall, so your scan leaves it out as not checked. Someone would need to check it in person."
+        for (name, extra) in [("result-noSpot-scanNotChecked", noSpot), ("result-noSpot-scanNotChecked-AX5", noSpot + Self.largestText)] {
+            let app = launchResult(answer: "cannotCheck", extra)
+            let notice = element(app, "result.scanNotChecked")
+            XCTAssertTrue(notice.waitForExistence(timeout: 10), "\(name): no notice")
+            XCTAssertTrue(Self.canBeReadByScrolling(notice, in: app), "\(name): the notice at \(notice.frame) can't be scrolled onto the screen")
+            XCTAssertEqual(ElementRead.snapshot(notice)?.label, text, name)
+            XCTAssertFalse(element(app, "result.spotNotChecked").exists, "\(name): a result without a spot speaks of this spot")
+            XCTAssertFalse(element(app, "result.spotRefused").exists, name)
+            attach(app, name: name)
+            let outcome = try AccessibilityAudit.run(app) { _ in Thread.sleep(forTimeInterval: 6) }
+            for (_, finding) in outcome.persistent {
+                XCTFail("\(name): \(finding.message)")
+            }
+            app.terminate()
+        }
+        let refused = launchResult(answer: "somethingThere", noSpot)
+        XCTAssertTrue(element(refused, "result.headline").waitForExistence(timeout: 10))
+        for id in ["result.spotRefused", "result.spotNotChecked", "result.scanNotChecked"] {
+            XCTAssertFalse(element(refused, id).exists, "Something's there without a spot shows \(id)")
+        }
+        refused.terminate()
     }
 
     // MARK: - Helpers

@@ -185,8 +185,11 @@ final class DemoEngine: ScanActions {
             case .spotConfirm:
                 state.spotCheck?.answer = answer
             case .result:
-                // The result after that answer, which the result's notice reads.
+                // The result after that answer, which the result's notice reads. With a
+                // `-uiDemoResultFile` answer that names no spot there is no check to keep, and
+                // only the scan-wide notice after "I can't check this area" remains.
                 state.spotCheck = sampleSpotCheck(answer: answer)
+                state.spotAreaUnchecked = answer == .cannotCheck
             default:
                 break
             }
@@ -1077,6 +1080,7 @@ final class DemoEngine: ScanActions {
         followUpSkipped = false
         spotChecked = false
         state.spotCheck = nil
+        state.spotAreaUnchecked = false
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
@@ -1269,6 +1273,7 @@ extension DemoEngine {
     func answerSpotCheck(_ answer: SpotCheckAnswer) {
         guard state.phase == .spotConfirm, state.spotCheck?.answer == nil else { return }
         state.spotCheck?.answer = answer
+        if answer == .cannotCheck { state.spotAreaUnchecked = true }
         spotChecked = true
         run { engine in
             guard await engine.pause(1.2) else { return }

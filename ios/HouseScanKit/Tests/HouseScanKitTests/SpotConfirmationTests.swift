@@ -170,6 +170,32 @@ import Testing
         #expect(checks.settling(moved) == nil)
     }
 
+    /// An area left unchecked stays a fact of the scan, whatever is answered later: its claims
+    /// stay withdrawn, so a later answer about another area, or about a larger one holding it,
+    /// doesn't make it checked. Only "I can't check this area" leaves an area unchecked, and a new
+    /// record (the engine's reset, `ScanEngine.resetSpotChecks`) holds none.
+    @Test func anAreaLeftUncheckedStaysUncheckedForTheScan() {
+        var checks = SpotConfirmations()
+        #expect(!checks.leftAreaUnchecked)
+        checks.record(Self.confirmation(Self.area, .clear))
+        checks.record(Self.confirmation(Self.area, .somethingThere))
+        #expect(!checks.leftAreaUnchecked)
+
+        checks.record(Self.confirmation(Self.area, .cannotCheck))
+        #expect(checks.leftAreaUnchecked)
+        var moved = Self.area
+        moved.spot = 1.2...2.0
+        checks.record(Self.confirmation(moved, .clear))
+        var wider = Self.area
+        wider.span = 0.9...3.0
+        checks.record(Self.confirmation(wider, .clear))
+        #expect(checks.settling(Self.area)?.answer == .clear)
+        #expect(checks.leftAreaUnchecked)
+
+        checks = SpotConfirmations()
+        #expect(!checks.leftAreaUnchecked)
+    }
+
     /// The latest answer about an area wins whichever two it is, so "I can't check this area"
     /// after "Something's there" isn't read as an obstruction, and the other way round.
     @Test func cannotCheckAndSomethingThereReplaceEachOther() {

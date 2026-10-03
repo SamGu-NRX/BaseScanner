@@ -36,18 +36,7 @@ struct ResultScreen: View {
                         badges(result)
                     }
                     AnswerCard(result: result, sourceAvailable: state.spatialResultAvailable, revealed: revealed, actions: actions)
-                    if result.spot != nil {
-                        switch state.spotCheck?.answer {
-                        case .somethingThere:
-                            Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
-                                .accessibilityIdentifier("result.spotRefused")
-                        case .cannotCheck:
-                            Notice(symbol: "eye.slash", text: ScanCopy.spotNotChecked)
-                                .accessibilityIdentifier("result.spotNotChecked")
-                        case .clear, nil:
-                            EmptyView()
-                        }
-                    }
+                    spotNotices(result)
                     footnotes(result)
                         .padding(.horizontal, 4)
                     details(result)
@@ -71,6 +60,28 @@ struct ResultScreen: View {
     }
 
     // MARK: Parts
+
+    /// What the homeowner said about this result's spot, and, apart from it, an area of the wall
+    /// they couldn't check. The second follows the scan's records, not the spot, so it stays when
+    /// the answer after "I can't check this area" names no spot or another one.
+    @ViewBuilder
+    private func spotNotices(_ result: ResultPresentation) -> some View {
+        let answer = result.spot != nil ? state.spotCheck?.answer : nil
+        switch answer {
+        case .somethingThere:
+            Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
+                .accessibilityIdentifier("result.spotRefused")
+        case .cannotCheck:
+            Notice(symbol: "eye.slash", text: ScanCopy.spotNotChecked)
+                .accessibilityIdentifier("result.spotNotChecked")
+        case .clear, nil:
+            EmptyView()
+        }
+        if state.spotAreaUnchecked, answer != .cannotCheck {
+            Notice(symbol: "eye.slash", text: ScanCopy.scanNotChecked)
+                .accessibilityIdentifier("result.scanNotChecked")
+        }
+    }
 
     @ViewBuilder
     private func diorama(_ result: ResultPresentation) -> some View {

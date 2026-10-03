@@ -895,6 +895,10 @@ final class ScanViewState {
     var result: ResultPresentation?
     /// The homeowner's check of the proposed spot, retained beside the result.
     var spotCheck: SpotCheck?
+    /// True once the homeowner answered "I can't check this area" in this scan. That area stays
+    /// out of the scan, so the result says part of the wall went unchecked even when the answer
+    /// after it names no spot, or a spot elsewhere. Cleared with the scan's spot checks.
+    var spotAreaUnchecked = false
     /// True while the engine sees the AR scene drawing the result in the live camera
     /// (`ResultOverlayPolicy`). The AR screen then draws no overlay of its own; otherwise it
     /// draws `BatteryOverlay`.

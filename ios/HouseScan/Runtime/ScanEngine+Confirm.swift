@@ -143,6 +143,10 @@ extension ScanEngine {
             try? await Task.sleep(for: .seconds(spotAnsweredHold))
             guard state.phase == .spotConfirm, state.spotCheck?.id == id else { return }
             guard keepsClaims else {
+                // UI tests: the answer to this upload comes from a file (`-sampleResultAfterSpotAnswer`).
+                if let file = options.sampleResultAfterSpotAnswer, let sample = resultClient as? SampleResultClient {
+                    sample.answerFile = file
+                }
                 // The scan without those claims goes to the server again.
                 startUpload()
                 return

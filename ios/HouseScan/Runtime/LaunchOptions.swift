@@ -24,6 +24,10 @@ import OSLog
 ///   instead of "It's clear", so the scan is checked again without that area.
 /// - `-autopilotCannotCheck`: the autopilot answers the first spot check "I can't check this
 ///   area" instead of "It's clear". It can't be combined with `-autopilotSomethingThere`.
+/// - `-sampleResultAfterSpotAnswer <path>` (debug builds only): with the bundled sample, the
+///   upload sent after a spot check answered "Something's there" or "I can't check this area",
+///   and every upload after it, is answered with the server answer in this JSON file, such as
+///   one without a spot.
 /// - `-injectGroundRise <meters>`: with `-replay`, `-autopilot` and `-autopilotGate`, once the
 ///   first upload starts, each time a file named `inject-ground` appears in the gate folder the
 ///   app deletes it and hands the engine a detected floor that many meters above its current
@@ -43,6 +47,7 @@ struct LaunchOptions: Equatable {
     var autopilotCantGetThere = false
     var autopilotSomethingThere = false
     var autopilotCannotCheck = false
+    var sampleResultAfterSpotAnswer: URL?
     var simulateAppStore = false
     var injectGroundRise: Float?
 
@@ -62,6 +67,9 @@ struct LaunchOptions: Equatable {
         autopilotSomethingThere = arguments.contains("-autopilotSomethingThere")
         autopilotCannotCheck = arguments.contains("-autopilotCannotCheck")
         precondition(!(autopilotSomethingThere && autopilotCannotCheck), "-autopilotSomethingThere and -autopilotCannotCheck each choose the first spot answer; pass one")
+        #if DEBUG
+        sampleResultAfterSpotAnswer = value(after: "-sampleResultAfterSpotAnswer").map { URL(fileURLWithPath: $0) }
+        #endif
         simulateAppStore = arguments.contains("-simulateAppStore")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")

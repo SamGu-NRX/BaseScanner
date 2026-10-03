@@ -228,4 +228,11 @@ public struct SpotConfirmations: Sendable, Equatable {
     public func settling(_ area: SpotArea) -> SpotConfirmation? {
         records.last { $0.area.holds(area) }
     }
+
+    /// Whether any check of this scan was answered "I can't check this area". Its claims stay
+    /// withdrawn for the rest of the scan (`CoverageMap.withdrawClaims`), so every later answer,
+    /// with a spot or without one, rests on a stretch of wall nobody checked.
+    public var leftAreaUnchecked: Bool {
+        records.contains { $0.answer == .cannotCheck }
+    }
 }

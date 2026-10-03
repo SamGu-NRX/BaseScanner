@@ -6,7 +6,9 @@ import XCTest
 /// rather than that something stands there. The sample names the same spot every time, so the
 /// second answer is settled by the first; and after a ground refine takes the answer down
 /// (`-injectGroundRise`, as GroundFreshnessUITests), the answer that comes back is settled the
-/// same way, with the same notice and no second question.
+/// same way, with the same notice and no second question. When the answer after it names no
+/// spot, the result still says an area along the wall went unchecked; after "Something's there"
+/// it doesn't.
 final class SpotCannotCheckUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -94,7 +96,64 @@ final class SpotCannotCheckUITests: XCTestCase {
         attach(app, name: "engine-result-spotNotChecked-afterRefine")
     }
 
-    /// The result's notice says the area went unchecked, never that something stands there.
+    /// "I can't check this area", then an answer that names no spot (`-sampleResultAfterSpotAnswer`
+    /// with Fixtures/results/reject-nearest.json). There is no spot to tie the answer to, but the
+    /// area stays out of the scan, so the result says an area along the wall went unchecked, and
+    /// neither speaks of "this spot" nor of something standing there.
+    @MainActor
+    func testCannotCheckThenNoSpotStillSaysAnAreaWasNotChecked() throws {
+        try runToNoSpotResult(answer: "-autopilotCannotCheck") { app in
+            let any = app.descendants(matching: .any)
+            let notice = any["result.scanNotChecked"]
+            XCTAssertTrue(notice.waitForExistence(timeout: 10), "a result without a spot lost the area the homeowner couldn't check")
+            XCTAssertEqual(ElementRead.snapshot(notice)?.label, "You couldn't check an area along this wall, so your scan leaves it out as not checked. Someone would need to check it in person.")
+            XCTAssertFalse(any["result.spotNotChecked"].exists, "a result without a spot speaks of this spot")
+            XCTAssertFalse(any["result.spotRefused"].exists, "the result says something stands there")
+            self.attach(app, name: "engine-result-noSpot-scanNotChecked")
+        }
+    }
+
+    /// The same answer without a spot after "Something's there": nothing was left unchecked, so
+    /// the result says nothing about an unchecked area.
+    @MainActor
+    func testSomethingThereThenNoSpotLeavesNothingUnchecked() throws {
+        try runToNoSpotResult(answer: "-autopilotSomethingThere") { app in
+            let any = app.descendants(matching: .any)
+            XCTAssertTrue(any["result.headline"].waitForExistence(timeout: 10))
+            for id in ["result.scanNotChecked", "result.spotNotChecked", "result.spotRefused"] {
+                XCTAssertFalse(any[id].exists, "\(id) on a result without a spot after Something's there")
+            }
+        }
+    }
+
+    /// Runs the synthetic wall to the result with `answer` as the first spot answer and every
+    /// upload after it answered without a spot, then hands the held result to `check`.
+    @MainActor
+    private func runToNoSpotResult(answer: String, check: (XCUIApplication) -> Void) throws {
+        let files = FileManager.default
+        let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try files.createDirectory(at: gate, withIntermediateDirectories: true)
+        defer { try? files.removeItem(at: gate) }
+        // Every screen but the result is let through; the result is held for the test.
+        for phase in ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm"] {
+            try Data().write(to: gate.appending(path: phase))
+        }
+        let noSpot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures/results/reject-nearest.json").path
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-replay", FullFlowUITests.fixture, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path,
+            "-practiceMeter", "NO", "-sampleResult", answer, "-sampleResultAfterSpotAnswer", noSpot,
+        ]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(waitUntil(timeout: 300) { files.fileExists(atPath: gate.appending(path: "result.held").path) }, "the autopilot never reached the result")
+        XCTAssertTrue(files.fileExists(atPath: gate.appending(path: "spot-refusal.json").path), "the spot check was never answered \(answer)")
+        XCTAssertTrue(app.descendants(matching: .any)["screen.result"].exists)
+        check(app)
+    }
+
+    /// The result's notice says the area went unchecked, never that something stands there. The
+    /// spot's own notice replaces the scan-wide one.
     @MainActor
     private func assertNotCheckedNotice(_ app: XCUIApplication) {
         let any = app.descendants(matching: .any)
@@ -102,6 +161,7 @@ final class SpotCannotCheckUITests: XCTestCase {
         XCTAssertTrue(notice.waitForExistence(timeout: 10), "the result doesn't say the area wasn't checked")
         XCTAssertEqual(ElementRead.snapshot(notice)?.label, "You couldn't check the area around this spot, so your scan leaves it out as not checked. Someone would need to check it in person.")
         XCTAssertFalse(any["result.spotRefused"].exists, "the result says something stands where the homeowner said they couldn't check")
+        XCTAssertFalse(any["result.scanNotChecked"].exists, "the result repeats the spot's notice for the whole wall")
     }
 
     /// As FullFlowUITests: an issue fails only when a second pass, after a system banner has had

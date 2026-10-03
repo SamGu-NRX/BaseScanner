@@ -44,6 +44,9 @@ extension ScanCopy {
     /// Said on the result when the homeowner couldn't check the spot's area. It says the area
     /// went unchecked, never that something was seen there or that anyone has been asked to look.
     static let spotNotChecked = "You couldn't check the area around this spot, so your scan leaves it out as not checked. Someone would need to check it in person."
+    /// Said on the result when an area the homeowner couldn't check is not this result's spot: the
+    /// answer after it names no spot, or a spot elsewhere. That area still counts as unseen.
+    static let scanNotChecked = "You couldn't check an area along this wall, so your scan leaves it out as not checked. Someone would need to check it in person."
 
     /// "From 3 ft to 8 ft 6 in right of your meter": where the area runs along the wall, nearer
     /// end first. An end less than half an inch from the meter rounds to 0 in and is read as the

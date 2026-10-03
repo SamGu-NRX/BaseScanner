@@ -215,8 +215,14 @@ final class ScanEngine {
     }
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
-    /// The spot check (`ScanEngine+Confirm.swift`).
-    var spotConfirm = SpotConfirmState()
+    /// The spot check (`ScanEngine+Confirm.swift`). `ScanViewState.spotAreaUnchecked` is read from
+    /// its records on every change, so recording an answer sets it and a reset clears it.
+    var spotConfirm = SpotConfirmState() {
+        didSet {
+            let unchecked = spotConfirm.confirmations.leftAreaUnchecked
+            if state.spotAreaUnchecked != unchecked { state.spotAreaUnchecked = unchecked }
+        }
+    }
     /// When each mark was made, on the capture clock (`MarkKey`).
     var markTimes: [String: Double] = [:]
     /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
