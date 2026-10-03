@@ -275,13 +275,32 @@ import simd
                 for hasSpot in [true, false] {
                     for checks in sets {
                         let answer = ResultReading.answer(decision: decision, policyApproved: approved, hasSpot: hasSpot, checks: checks)
+                        let described = "\(decision) approved=\(approved) spot=\(hasSpot) checks=\(checks.map { "\($0.id)=\($0.outcome)" })"
+                        // A reject without a spot stays negative whatever its checks say.
+                        if decision == .reject, !hasSpot { #expect(answer == .notHere, "\(described)") }
                         guard answer == .candidate else { continue }
-                        #expect(hasSpot && ResultReading.spotIsClean(hasSpot: hasSpot, checks: checks) && decision != .reject,
-                                "\(decision) approved=\(approved) checks=\(checks.map { "\($0.id)=\($0.outcome)" })")
+                        // A candidate has a spot and at least one check, every one passing.
+                        #expect(hasSpot && !checks.isEmpty && checks.allSatisfy { $0.outcome == .pass } && decision != .reject,
+                                "\(described)")
                     }
                 }
             }
         }
+    }
+
+    /// A pass that contradicts itself (no spot, no checks, or a check that didn't pass) goes to a
+    /// person rather than reading as a candidate, and its checks stay as sent.
+    @Test func anInconsistentPassGoesToAnInstaller() {
+        typealias Check = ResultReading.Check
+        let answer = { (spot: Bool, checks: [Check]) in
+            ResultReading.answer(decision: .pass, policyApproved: true, hasSpot: spot, checks: checks)
+        }
+        #expect(answer(false, []) == .installer)
+        #expect(answer(true, []) == .installer)
+        #expect(answer(false, [Check(id: "a", outcome: .pass)]) == .installer)
+        #expect(answer(true, [Check(id: "a", outcome: .pass), Check(id: "b", outcome: .unsure, viewCapturable: true)]) == .installer)
+        #expect(answer(true, [Check(id: "a", outcome: .pass), Check(id: "b", outcome: .fail)]) == .installer)
+        #expect(answer(true, [Check(id: "a", outcome: .pass)]) == .candidate)
     }
 
     /// An installer's review can still carry a spot, and the reading keeps it: only the words

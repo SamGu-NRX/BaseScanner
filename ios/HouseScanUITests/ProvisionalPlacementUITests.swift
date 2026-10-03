@@ -31,6 +31,7 @@ final class ProvisionalPlacementUITests: XCTestCase {
         }
         defer { server.stop() }
         let app = Self.launchEngine(gate: gate)
+        defer { app.terminate() }
         let any = app.descendants(matching: .any)
 
         let tryAgain = app.buttons["action.retryUpload"]
@@ -65,6 +66,7 @@ final class ProvisionalPlacementUITests: XCTestCase {
         let server = GateServer(gate: gate) { body, _ in Self.passingAnswer(binding: body) }
         defer { server.stop() }
         let app = Self.launchEngine(gate: gate, extra: ["-autopilotSomethingThere"])
+        defer { app.terminate() }
         let any = app.descendants(matching: .any)
 
         XCTAssertTrue(any["screen.result"].waitForExistence(timeout: 420), "the second passing answer never reached the result")
@@ -123,7 +125,7 @@ final class ProvisionalPlacementUITests: XCTestCase {
         XCTAssertFalse(any["result.summary"].exists, "a possible spot's summary is the server's pass")
         let row = any["detail.check.gas_clearance"]
         XCTAssertTrue(row.exists)
-        XCTAssertEqual(row.label, "Distance from gas equipment: Meets the rule on what the scan recorded", row.label)
+        XCTAssertEqual(row.label, "Distance from gas equipment: Passes on recorded data", row.label)
         let rowValue = row.value as? String ?? ""
         XCTAssertFalse(rowValue.contains("well clear"), "a pass kept the server's reason: \(rowValue)")
         scroll(to: note, in: app)
@@ -155,7 +157,11 @@ final class ProvisionalPlacementUITests: XCTestCase {
         XCTAssertEqual(lines.count, 0, "a passing check reached the card")
         XCTAssertFalse(any["result.installerConfirms"].exists)
         XCTAssertEqual(app.buttons["action.showAR"].label, "See this spot on your wall")
-        let texts = app.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " | ")
+        // Details' scope note says, truthfully, that a pass is "not ... confirmed clear": the sweep
+        // leaves that one qualified sentence out, whether or not Details is open.
+        let texts = app.staticTexts.allElementsBoundByIndex
+            .filter { $0.identifier != "result.calculatedNote" }
+            .map(\.label).joined(separator: " | ")
         assertNoFitWords(texts)
     }
 

@@ -826,7 +826,7 @@ enum ScanCopy {
 
     static func outcomeWord(_ outcome: CheckOutcome) -> String {
         switch outcome {
-        case .pass: "Meets the rule on what the scan recorded"
+        case .pass: "Passes on recorded data"
         case .unsure: "Not sure yet"
         case .fail: "Doesn't work"
         }

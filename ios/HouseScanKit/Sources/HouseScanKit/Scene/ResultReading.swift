@@ -61,15 +61,23 @@ public enum ResultReading {
         if hasSpot, !spotIsClean(hasSpot: hasSpot, checks: checks) { return .installer }
         switch decision {
         case .pass:
-            return .candidate
+            // A candidate needs what makes one: a spot, and checks that all pass. A pass without a
+            // spot, with no checks, or with a check that didn't pass contradicts itself, and a
+            // person reads it; its checks stay as the server sent them.
+            return hasSpot && allPass(checks) ? .candidate : .installer
         case .reject:
             return .notHere
         case .manualReview:
-            // Needs at least one check: over none, "every check passes" is vacuously true.
-            if hasSpot, !policyApproved, !checks.isEmpty, checks.allSatisfy({ $0.outcome == .pass }) { return .candidate }
+            if hasSpot, !policyApproved, allPass(checks) { return .candidate }
             if checks.contains(where: { $0.outcome == .unsure && !$0.needsPerson && $0.viewCapturable }) { return .oneMoreLook }
             return .installer
         }
+    }
+
+    /// At least one check, and every one passed. Over none, "every check passes" is vacuously
+    /// true and says nothing.
+    private static func allPass(_ checks: [Check]) -> Bool {
+        !checks.isEmpty && checks.allSatisfy { $0.outcome == .pass }
     }
 
     /// Indices of the checks the result card shows, in order: every FAIL, then every UNSURE, at
