@@ -149,11 +149,18 @@ struct SpotConfirmScreen: View {
         let shown = ScanCopy.spotSpace(check)
         let spoken = ScanCopy.spotSpace(check, spoken: true)
         return VStack(alignment: .leading, spacing: 10) {
-            Label(ScanCopy.spotSpaceTitle, systemImage: "eye")
-                .font(Typeface.caption)
-                .foregroundStyle(Palette.muted)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("spot.area.title")
+            // One element read as the title alone: VoiceOver names the "eye" symbol "Show", and
+            // the identifier landed on it (CI run 37108821815 read the title as "Show").
+            Label {
+                Text(ScanCopy.spotSpaceTitle)
+            } icon: {
+                Image(systemName: "eye").accessibilityHidden(true)
+            }
+            .font(Typeface.caption)
+            .foregroundStyle(Palette.muted)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("spot.area.title")
             VStack(alignment: .leading, spacing: 6) {
                 spaceLine(shown.along, spoken: spoken.along, id: "along")
                 spaceLine(shown.out, spoken: spoken.out, id: "out")

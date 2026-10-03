@@ -103,9 +103,8 @@ final class SpotConfirmUITests: XCTestCase {
         let window = app.windows.firstMatch.frame
         for (id, expected) in [("along", spoken.along), ("out", spoken.out), ("up", spoken.up)] {
             let line = element(app, "spot.area.\(id)")
-            // At AX5 the card can sit below the fold; the homeowner scrolls to it. Slowly, as
-            // ScreenStatesUITests does, so momentum doesn't carry the line past the top.
-            for _ in 0..<6 where !line.isHittable { app.scrollViews.firstMatch.swipeUp(velocity: .slow) }
+            // At AX5 the card can sit below the fold; the homeowner scrolls to it.
+            Self.scrollOnScreen(line, in: app)
             let read = ElementRead.snapshot(line)
             XCTAssertEqual(read?.label, expected, "\(name): spot.area.\(id)")
             let frame = read?.frame ?? .zero
@@ -135,6 +134,29 @@ final class SpotConfirmUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(element(app, "screen.spotConfirm").waitForExistence(timeout: 15), "the spot check never appeared")
         return app
+    }
+
+    /// Scrolls the screen's scroll view until the whole of `element` is inside the window, the
+    /// same test the visibility assertions make. `isHittable` only needs the element's middle on
+    /// screen: at AX5 a line 249 pt tall passed it with its bottom 176 pt below the window (CI run
+    /// 37108821815). Each drag moves by the part that is off screen plus a margin, at most 60% of
+    /// the window, and holds at the end so no momentum carries the element past the other edge.
+    @MainActor
+    static func scrollOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
+        let window = app.windows.firstMatch.frame
+        let scroll = app.scrollViews.firstMatch
+        let margin: CGFloat = 24
+        let most = window.height * 0.6
+        for _ in 0..<10 {
+            let frame = element.frame
+            guard !frame.isEmpty, !window.contains(frame) else { return }
+            // Negative drags move the content up, bringing what is below the window into view.
+            let drag = frame.maxY > window.maxY
+                ? -min(frame.maxY - window.maxY + margin, most)
+                : min(window.minY - frame.minY + margin, most)
+            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: drag)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
     }
 
     /// A server answer in Fixtures/results, which the demo reads in debug builds.
