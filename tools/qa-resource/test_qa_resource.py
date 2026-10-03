@@ -797,9 +797,16 @@ sys.exit(q.main(sys.argv[2:]))
 
     def test_run_inheriting_ignored_sigchld_still_records_payload_failure(self):
         # Under SIG_IGN, Darwin reaps the payload at exit and Popen reports ECHILD as status 0.
-        ignoring = "import signal; signal.signal(signal.SIGCHLD, signal.SIG_IGN); " + BOOTSTRAP
+        ignoring = ("import signal; signal.signal(signal.SIGCHLD, signal.SIG_IGN); "
+                    + BOOTSTRAP.replace("sys.exit(q.main(sys.argv[2:]))",
+                                        "code = q.main(sys.argv[2:]); "
+                                        "print('caller SIGCHLD restored', signal.getsignal(signal.SIGCHLD) == signal.SIG_IGN); "
+                                        "sys.exit(code)"))
         runner = self.launch(self.job_args("ignored-sigchld", "import sys; sys.exit(3)"), bootstrap=ignoring)
-        result = self.finish(runner, "ignored-sigchld", 3)
+        output, error = runner.communicate(timeout=8)
+        self.assertEqual(runner.returncode, 3, (output, error))
+        self.assertIn("caller SIGCHLD restored True", output)
+        result = self.job("ignored-sigchld")
         self.assertEqual((result["status"], result["exitCode"]), ("failed", 3))
         self.assert_lock_free()
 
@@ -1153,6 +1160,23 @@ class OwnershipTests(unittest.TestCase):
                 self.assertEqual([p["pid"] for p in found], expected)
                 self.assertTrue(all(p["proof"] == "ancestry" for p in found))
                 kill.assert_not_called()
+
+    def test_pid_reused_between_pin_and_final_read_is_not_owned(self):
+        job = dict(jobId="job", ownerToken="a" * 32)
+        uid = os.getuid()
+        rows = {123: dict(pid=123, ppid=1, pgid=123, uid=uid, stat="S"),
+                124: dict(pid=124, ppid=123, pgid=123, uid=uid, stat="S")}
+        reads = {}
+        def kernel(pid):
+            reads[pid] = reads.get(pid, 0) + 1
+            # 124 is a true descendant when pinned, then exits and its PID is reused.
+            start = 900_000_000 if pid == 124 and reads[pid] > 1 else pid * 1_000_000
+            return dict(pid=pid, start_us=start, uid=uid, ppid=rows[pid]["ppid"], zombie=False)
+        with patch.object(qa, "process_snapshot", return_value=rows), \
+             patch.object(qa, "process_env", return_value=[]), \
+             patch.object(qa, "kernel_identity", side_effect=kernel), \
+             patch.object(qa, "process_identity", side_effect=lambda pid, **unused: dict(pid=pid, start="date", comm="python")):
+            self.assertEqual([p["pid"] for p in qa.owned_processes(job, 123)], [123])
 
     def test_proven_identity_survives_lost_token_and_reparenting(self):
         identity = dict(pid=124, uid=os.getuid(), start_us=124_000_001,
@@ -1518,6 +1542,89 @@ class PureTests(unittest.TestCase):
             directory, live, job = qa.create_job(args)
             live.close()
             self.assertEqual(qa.read_job(directory)["status"], "queued")
+
+    def test_setup_failure_without_an_error_record_removes_the_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = Mock(state_dir=root / "state", job_id="no-record", kind="package", argv=["unused"],
+                        cwd=root, device=None, admission_deadline=3, timeout=1)
+            with patch.object(qa.secrets, "token_hex", side_effect=OSError(5, "entropy unavailable")):
+                with self.assertRaises(OSError):
+                    qa.create_job(args)
+            self.assertFalse((root / "state/jobs/no-record").exists())
+            real_write = qa.write_job
+            writes = []
+            def second_write_fails(directory, job):
+                writes.append(job["status"])
+                if len(writes) > 1:
+                    raise OSError(28, "No space left on device")
+                real_write(directory, job)
+            original_touch = Path.touch
+            def no_log(path, *rest, **keywords):
+                if path.name == "output.log":
+                    raise OSError(28, "No space left on device")
+                return original_touch(path, *rest, **keywords)
+            with patch.object(qa, "write_job", side_effect=second_write_fails), \
+                 patch.object(Path, "touch", autospec=True, side_effect=no_log):
+                with self.assertRaisesRegex(qa.JobSetupError, "cannot set up job files: .*cannot record that error"):
+                    qa.create_job(args)
+            self.assertEqual(writes, ["queued", "error"])
+            self.assertFalse((root / "state/jobs/no-record").exists())
+            directory, live, job = qa.create_job(args)
+            live.close()
+
+    def test_runner_log_failure_is_recorded_and_releases_handles(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = Mock(state_dir=root / "state", job_id="no-log", kind="package", argv=["unused"],
+                        cwd=root, device=None, admission_deadline=3, timeout=1)
+            directory, live, job = qa.create_job(args)
+            cancel_fd = qa.open_cancel_reader(directory)
+            original_open = Path.open
+            def no_descriptors(path, *rest, **keywords):
+                if path.name == "runner.log":
+                    raise OSError(24, "Too many open files")
+                return original_open(path, *rest, **keywords)
+            with patch.object(Path, "open", autospec=True, side_effect=no_descriptors), \
+                 patch.object(qa.subprocess, "Popen") as spawn:
+                self.assertEqual(qa.run_job(directory, live, job, root / "lock", echo=False, cancel_fd=cancel_fd), 125)
+            spawn.assert_not_called()
+            result = qa.read_job(directory)
+            self.assertEqual(result["status"], "error")
+            self.assertIn("Too many open files", result["error"])
+            self.assertTrue(live.closed)
+            self.assertFalse(qa.live_report(directory)["live"])
+            with self.assertRaises(OSError):
+                os.fstat(cancel_fd)
+
+    def test_signal_while_submit_reinstalls_handlers_after_spawn_cancels_the_runner(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = Mock(state_dir=root / "state", job_id="after-spawn", kind="package", argv=["unused"],
+                        cwd=root, device=None, admission_deadline=3, timeout=1)
+            directory, live, job = qa.create_job(args)
+            real_kill, real_signal = os.kill, signal.signal
+            spawned, kills, receipts = [], [], []
+            def popen(*unused, **keywords):
+                spawned.append(True)
+                return Mock(pid=987654)  # Never a real process: os.kill below only records it.
+            def install(sig, handler):
+                previous = real_signal(sig, handler)
+                if spawned and getattr(handler, "__name__", "") == "interrupt" and sig == qa.RUNNER_SIGNALS[0]:
+                    real_kill(os.getpid(), signal.SIGTERM)  # Lands before the other installs.
+                return previous
+            def kill(pid, signum):
+                self.assertEqual(pid, 987654)
+                kills.append(signum)
+            with patch.object(qa.subprocess, "Popen", side_effect=popen), \
+                 patch.object(qa.signal, "signal", side_effect=install), \
+                 patch.object(qa.os, "kill", side_effect=kill), \
+                 patch.object(qa, "write_receipt", side_effect=receipts.append):
+                code = qa.submit(directory, live, job, root / "lock", qa.open_cancel_reader(directory))
+            self.assertEqual(code, 130)
+            self.assertEqual(kills, [signal.SIGTERM])
+            self.assertEqual(len(receipts), 1)
+            self.assertTrue(receipts[0]["cancelRequested"])
 
     def test_submit_interrupted_while_waiting_for_its_ticket_records_cancelled(self):
         for sig in qa.RUNNER_SIGNALS:

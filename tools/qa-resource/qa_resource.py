@@ -771,11 +771,7 @@ def exit_code(job):
 
 def create_job(args):
     directory = args.state_dir / "jobs" / args.job_id
-    directory.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        directory.mkdir()
-    except FileExistsError as error:
-        raise ValueError(f"job {args.job_id} already exists; choose a new id") from error
+    # Built before the directory exists, so nothing here can fail after it does.
     job = dict(jobId=args.job_id, kind=args.kind, argv=args.argv, cwd=str(args.cwd),
                device=args.device, status="queued", reasons=[], runnerPid=None,
                runnerStart=None, childPgid=None, bootedByJob=False, exitCode=None,
@@ -785,6 +781,11 @@ def create_job(args):
                ownerToken=secrets.token_hex(16), escapedProcesses=[], cancelChannel=CANCEL_FIFO,
                ignoredProcesses=[], logs={name: str(directory / (name + ".log"))
                                          for name in ("output", "runner")})
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        directory.mkdir()
+    except FileExistsError as error:
+        raise ValueError(f"job {args.job_id} already exists; choose a new id") from error
     live = None
     try:
         live = (directory / "live.lock").open("a+")
@@ -796,9 +797,7 @@ def create_job(args):
         leftovers = []
         if live is not None:
             cleanup_step(leftovers, "close live lock", live.close)
-        for path in (directory / "job.json.tmp", directory / "job.json", directory / "live.lock", directory):
-            cleanup_step(leftovers, f"remove {path}",
-                         lambda path=path: path.rmdir() if path == directory else path.unlink(missing_ok=True))
+        leftovers += remove_job_files(directory)
         detail = f"; {'; '.join(leftovers)}" if leftovers else ""
         raise JobSetupError(f"job {args.job_id}: cannot create the job record: {error}{detail}") from error
     try:
@@ -823,9 +822,26 @@ def fail_unstarted_job(directory, live, job, message):
     job.update(status="error", exitCode=125, error=message, finishedAt=timestamp())
     try:
         write_job(directory, job)
+    except OSError as error:
+        # The queued record would otherwise outlive this process with no runner. This
+        # invocation created everything in the directory, so removing it keeps the id reusable.
+        leftovers = remove_job_files(directory)
+        detail = f"; {'; '.join(leftovers)}" if leftovers else ""
+        return JobSetupError(f"job {job['jobId']}: {message}; cannot record that error ({error}), "
+                             f"so the job directory was removed{detail}")
     finally:
         live.close()
     return JobSetupError(f"job {job['jobId']}: {message}")
+
+
+def remove_job_files(directory):
+    """Remove what job setup creates, by name, then the directory. Returns failures."""
+    leftovers = []
+    for name in ("job.json.tmp", "job.json", "live.lock", "output.log", "runner.log", CANCEL_FIFO):
+        cleanup_step(leftovers, f"remove {directory / name}",
+                     lambda name=name: (directory / name).unlink(missing_ok=True))
+    cleanup_step(leftovers, f"remove {directory}", directory.rmdir)
+    return leftovers
 
 
 class CancelListener:
@@ -932,12 +948,14 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
     ticket_path, ticket = owned_ticket if owned_ticket else (None, None)
     if deadline is None:
         deadline = time.monotonic() + job["admissionDeadline"]
-    log = (directory / "runner.log").open("a", buffering=1)
+    # Opened inside the try below, so a failure still gets a terminal record and cleanup.
+    log = None
     def update(**fields):
         job.update(fields)
         write_job(directory, job)
         line = f"{timestamp()} {job['status']} " + json.dumps(fields, sort_keys=True)
-        log.write(line + "\n")
+        if log is not None:
+            log.write(line + "\n")
         if echo:
             print(line, flush=True)
     def report_escaped(identity, outcome):
@@ -961,7 +979,8 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
     old_sigchld = signal.signal(signal.SIGCHLD, signal.SIG_DFL)
     listener = None
     try:
-        # submit starts the runner with these blocked; a cancel that arrived meanwhile is
+        log = (directory / "runner.log").open("a", buffering=1)
+        # main and submit start this with these blocked; a cancel that arrived meanwhile is
         # raised here, inside the try, so it still gets a terminal result and cleanup.
         signal.pthread_sigmask(signal.SIG_UNBLOCK, RUNNER_SIGNALS)
         if cancel_fd is not None or (directory / CANCEL_FIFO).exists():
@@ -1135,7 +1154,8 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
             cleanup_step(cleanup_errors, "close shared QA lock", global_lock.close)
         cleanup_step(cleanup_errors, "release queue ticket",
                      lambda: cleanup_errors.extend(release_ticket(ticket_path, ticket)))
-        cleanup_step(cleanup_errors, "close runner log", log.close)
+        if log is not None:
+            cleanup_step(cleanup_errors, "close runner log", log.close)
         mark_cleanup_errors()
         cleanup_step(cleanup_errors, "write release result", lambda: write_job(directory, job))
         recorded_errors = len(cleanup_errors)
@@ -1218,9 +1238,11 @@ def submit(directory, live, job, lock_path, cancel_fd):
                 printing = False
                 # From here an interruption cancels the job instead of abandoning it, and a
                 # submitter blocked on a full stdout pipe can still be stopped.
-                for sig in RUNNER_SIGNALS:
-                    signal.signal(sig, interrupt)
                 try:
+                    # Inside the try: a signal landing between these installs still cancels
+                    # the runner, instead of escaping to the outer handler and abandoning it.
+                    for sig in RUNNER_SIGNALS:
+                        signal.signal(sig, interrupt)
                     if pending:
                         raise Cancelled(pending[0])
                     printing = True
