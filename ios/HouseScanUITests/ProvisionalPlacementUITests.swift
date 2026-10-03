@@ -58,14 +58,17 @@ final class ProvisionalPlacementUITests: XCTestCase {
     /// "Something's there" withdraws the area and sends the scan again; the passing answer that
     /// comes back names the same spot, so the earlier answer settles it and the result shows
     /// without asking (`SpotConfirmations.settling`). That shortcut still shows a possible spot,
-    /// beside the notice that the homeowner said something stands there.
+    /// beside the notice that the homeowner said something stands there. At the largest text
+    /// size, so the AR view's longer instruction for a real candidate (placement, then what the
+    /// fit still needs) is captured where it is longest; a demo answer is a sample, whose AR
+    /// instruction differs.
     @MainActor
     func testASpotSettledByAnEarlierAnswerIsStillAPossibleSpot() throws {
         let gate = try Self.gate()
         defer { try? FileManager.default.removeItem(at: gate) }
         let server = GateServer(gate: gate) { body, _ in Self.passingAnswer(binding: body) }
         defer { server.stop() }
-        let app = Self.launchEngine(gate: gate, extra: ["-autopilotSomethingThere"])
+        let app = Self.launchEngine(gate: gate, extra: ["-autopilotSomethingThere"] + Self.largestText)
         defer { app.terminate() }
         let any = app.descendants(matching: .any)
 
@@ -74,7 +77,18 @@ final class ProvisionalPlacementUITests: XCTestCase {
         XCTAssertEqual(any["result.headline"].label, Self.candidate)
         XCTAssertTrue(any["result.spotRefused"].exists, "the settled answer's notice is missing")
         assertCandidateCard(app)
-        attach(app, name: "result-candidate-settled")
+        attach(app, name: "result-candidate-settled-AX5")
+        scroll(to: any["result.candidateNote"], in: app)
+        attach(app, name: "result-candidate-settled-AX5-note")
+
+        try Data().write(to: gate.appending(path: "result"))
+        let instruction = any["instruction"]
+        XCTAssertTrue(any["screen.resultAR"].waitForExistence(timeout: 20))
+        XCTAssertTrue(instruction.waitForExistence(timeout: 10))
+        XCTAssertTrue(instruction.label.contains(Self.candidate), instruction.label)
+        XCTAssertTrue(instruction.label.contains("An installer needs to check the fit on site."), instruction.label)
+        XCTAssertTrue(app.buttons["action.closeAR"].isHittable, "Done is out of reach under the AR instruction")
+        attach(app, name: "resultAR-candidate-settled-AX5")
     }
 
     // MARK: Server answers in Fixtures/results
