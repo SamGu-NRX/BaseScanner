@@ -33,9 +33,9 @@ extension ScanCopy {
     static let spotRefused = "You said something stands where this spot is. Your scan leaves that area out, and an installer would need to check it."
 
     /// "From 3 ft to 8 ft 6 in right of your meter": where the area runs along the wall, nearer
-    /// end first. An end that rounds to 0 in is the meter itself, so -1...24 in reads "From your
-    /// meter to 2 ft right of it", not "From 0 in left to 2 ft right". `spoken` spells the units
-    /// out for VoiceOver.
+    /// end first. An end less than half an inch from the meter rounds to 0 in and is read as the
+    /// meter itself, so -0.3...24 in reads "From your meter to 2 ft right of it", not "From 0 in
+    /// left to 2 ft right". `spoken` spells the units out for VoiceOver.
     static func spotArea(_ span: ClosedRange<Float>, spoken: Bool = false) -> String {
         let length = { (meters: Float) in spoken ? Distance.spoken(meters) : Distance.feetAndInches(meters) }
         let side = { (s: Float) in s < 0 ? "left" : "right" }
@@ -52,10 +52,11 @@ extension ScanCopy {
         return "From \(length(low)) left to \(length(high)) right of your meter"
     }
 
-    /// The area's three extents, each readable on its own: along the wall from the meter, out
-    /// from the wall over the ground (`SpotCheck.areaDepth`, the deepest clearance zone holding
-    /// the spot), and up the wall face to the battery's height (`SpotCheck.spotHeight`). These are
-    /// the same edges `SpotOutline` draws on a photo.
+    /// The asked-about area's three extents, each readable on its own: along the wall from the
+    /// meter (`SpotCheck.area`), out from the wall over the ground (`SpotCheck.areaDepth`), and up
+    /// the wall face to the battery's height (`SpotCheck.spotHeight`). These are the edges
+    /// `SpotOutline` draws on a photo, and no more: the words describe the area the question is
+    /// about, not every clearance the server checks.
     static func spotSpace(_ check: SpotCheck, spoken: Bool = false) -> (along: String, out: String, up: String) {
         let length = { (meters: Float) in spoken ? Distance.spoken(meters) : Distance.feetAndInches(meters) }
         return (
