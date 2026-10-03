@@ -1,0 +1,269 @@
+{
+ "schema_version": "1.0",
+ "decision": "manual_review",
+ "summary": "Test answer: two checks at the spot depend on areas the scan did not see; one view can be taken now and one can't.",
+ "reasons": [
+  {
+   "code": "unsure_checks",
+   "message": "Test: two checks at this spot are unsure.",
+   "checks": [
+    "ground_surface",
+    "front_clearance"
+   ]
+  },
+  {
+   "code": "unobserved_area",
+   "message": "Test: part of the area the checks need was not seen.",
+   "checks": [
+    "ground_surface",
+    "front_clearance"
+   ]
+  }
+ ],
+ "policy": {
+  "id": null,
+  "version": null,
+  "auto_approve": false,
+  "sources": [
+   "public"
+  ],
+  "rules_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ "spot": {
+  "outcome": "unsure",
+  "wall_id": "wall",
+  "segment": 0,
+  "span_ft": [
+   3.0,
+   5.5
+  ],
+  "width_ft": 2.5,
+  "depth_ft": 1.0,
+  "height_ft": 4.5,
+  "footprint": [
+   [
+    3.0,
+    0.0
+   ],
+   [
+    5.5,
+    0.0
+   ],
+   [
+    5.5,
+    1.0
+   ],
+   [
+    3.0,
+    1.0
+   ]
+  ],
+  "center": [
+   4.25,
+   0.5
+  ],
+  "along": [
+   1.0,
+   0.0
+  ],
+  "outward": [
+   0.0,
+   1.0
+  ],
+  "meter_offset_ft": [
+   4.25,
+   0.5
+  ],
+  "route_length_ft": 3.0
+ },
+ "route": {
+  "outcome": "pass",
+  "length_ft": 3.0,
+  "plus_minus_ft": 0.3,
+  "height_ft": 1.5,
+  "polyline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    3.0,
+    0.0
+   ]
+  ],
+  "detours": [],
+  "crossings": []
+ },
+ "checks": [
+  {
+   "id": "ground_surface",
+   "label": "Ground under the spot",
+   "outcome": "unsure",
+   "unsure_cause": "unobserved",
+   "reason": "Test: the ground under the spot was seen from one place only.",
+   "measured_ft": null,
+   "plus_minus_ft": null,
+   "threshold_ft": null,
+   "comparison": null,
+   "subject": null,
+   "rule": {
+    "key": "ground_surface_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "front_clearance",
+   "label": "Clear space in front",
+   "outcome": "unsure",
+   "unsure_cause": "unobserved",
+   "reason": "Test: the space in front of the spot was not seen.",
+   "measured_ft": null,
+   "plus_minus_ft": null,
+   "threshold_ft": null,
+   "comparison": null,
+   "subject": null,
+   "rule": {
+    "key": "front_clearance_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "gas_clearance",
+   "label": "Distance from the gas meter",
+   "outcome": "pass",
+   "reason": "Sample: the gas meter is well clear of the spot.",
+   "measured_ft": 6.2,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": "objects[0] gas_meter",
+   "rule": {
+    "key": "sample_gas_clearance_ft",
+    "source": "Sample value, not a rule citation",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "route_length",
+   "label": "Cable run from the meter",
+   "outcome": "pass",
+   "reason": "Sample: the cable run is short.",
+   "measured_ft": 3.0,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 20.0,
+   "comparison": "at_most",
+   "subject": null,
+   "rule": {
+    "key": "sample_route_length_ft",
+    "source": "Sample value, not a rule citation",
+    "placeholder": true
+   }
+  }
+ ],
+ "nearest_considered": null,
+ "missing_evidence": [
+  {
+   "kind": "band",
+   "band": "ground",
+   "span_ft": [
+    3.0,
+    5.5
+   ],
+   "checks": [
+    "ground_surface"
+   ],
+   "message": "Test: film the ground under the spot."
+  },
+  {
+   "kind": "band",
+   "band": "facing",
+   "span_ft": [
+    3.0,
+    5.5
+   ],
+   "checks": [
+    "front_clearance"
+   ],
+   "message": "Test: show what stands in front of the spot."
+  }
+ ],
+ "ends": {
+  "left": {
+   "kind": "unexplored",
+   "s_ft": -8.0,
+   "point": [
+    -8.0,
+    0.0
+   ]
+  },
+  "right": {
+   "kind": "limit",
+   "s_ft": 12.0,
+   "point": [
+    12.0,
+    0.0
+   ]
+  }
+ },
+ "sweep": [
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    -8.0,
+    -1.5
+   ],
+   "outcome": "fail",
+   "failing": [
+    "gas_clearance"
+   ],
+   "unsure": []
+  },
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    -1.0,
+    2.5
+   ],
+   "outcome": "fail",
+   "failing": [
+    "meter_clearance"
+   ],
+   "unsure": []
+  },
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    3.0,
+    6.0
+   ],
+   "outcome": "unsure",
+   "failing": [],
+   "unsure": [
+    "window_clearance",
+    "front_clearance"
+   ]
+  },
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    6.5,
+    9.5
+   ],
+   "outcome": "unsure",
+   "failing": [],
+   "unsure": [
+    "front_clearance"
+   ]
+  }
+ ],
+ "stats": {
+  "candidates": 36,
+  "pass": 0,
+  "unsure": 14,
+  "fail": 22,
+  "elapsed_ms": 0,
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ }
+}

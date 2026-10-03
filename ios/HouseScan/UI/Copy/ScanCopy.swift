@@ -635,11 +635,13 @@ enum ScanCopy {
 
     /// The sentence under a failed or unsure line on the result card: the measurement against the
     /// rule, or without a measurement, the server's reason (fail) or who settles it (unsure).
-    static func cardLine(_ row: CheckRow, spoken: Bool = false) -> String? {
+    /// `photoOffered` is whether the line offers the camera for the view that settles it
+    /// (`ResultPresentation.offeredView`).
+    static func cardLine(_ row: CheckRow, photoOffered: Bool, spoken: Bool = false) -> String? {
         switch row.outcome {
         case .pass: nil
         case .fail: measurement(row, spoken: spoken) ?? row.reason
-        case .unsure: measurement(row, spoken: spoken) ?? unsureNote(row)
+        case .unsure: measurement(row, spoken: spoken) ?? unsureNote(photoOffered: photoOffered)
         }
     }
 
@@ -696,8 +698,13 @@ enum ScanCopy {
     /// review was sent: the app only shows the server's answer and contacts nobody.
     static let needsInstaller = "Needs an installer to check"
 
-    static func unsureNote(_ row: CheckRow) -> String {
-        row.needsPerson ? Self.needsInstaller : "One more photo would settle this"
+    static let onePhoto = "One more photo would settle this"
+
+    /// Who settles an unsure check. One more photo only when the app offers the camera for it
+    /// (`ResultPresentation.offeredView`): keyed on the check alone, a view the homeowner
+    /// couldn't get to, or one the app can't plan, still promised a photo nothing would take.
+    static func unsureNote(photoOffered: Bool) -> String {
+        photoOffered ? Self.onePhoto : Self.needsInstaller
     }
 
     /// "Measured 3 ft 2 in. The rule is at least 3 ft, and the measurement can be off by about 4 in."

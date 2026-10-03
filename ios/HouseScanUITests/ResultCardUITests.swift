@@ -1,8 +1,8 @@
 import XCTest
 
 /// The result card on server answers in Fixtures/results, read by the demo in debug builds
-/// (`-uiDemoResultFile`), at the default text size and the largest accessibility size. Each test
-/// keeps a screenshot of the card.
+/// (`-uiDemoResultFile`), at the default text size and the largest accessibility size. The tests
+/// run at both sizes keep a screenshot of the card.
 final class ResultCardUITests: XCTestCase {
     private static let largestText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
 
@@ -58,6 +58,43 @@ final class ResultCardUITests: XCTestCase {
         let line = element(app, "check.window_clearance")
         XCTAssertTrue(line.waitForExistence(timeout: 10), "the window check is not on the card")
         XCTAssertEqual(value(line), "Measured 3 feet 1 inch. The rule is at least 3 feet, and the measurement can be off by about 4 inches.")
+    }
+
+    // MARK: A photo only when the line offers one
+
+    /// view-not-offered.json: two unsure checks that views would settle. The ground's view can be
+    /// taken now, so its line is a "Show me" button that says a photo would settle it. The space
+    /// in front's view can't be planned, as after a withdrawn request, so its line promises no
+    /// photo and offers no button. The spot-unknown run showed "One more photo would settle this"
+    /// on such a line.
+    @MainActor
+    func testOnlyALineThatOffersThePhotoPromisesIt() throws {
+        try checkPhotoOffer(textSize: [], name: "result-viewNotOffered")
+    }
+
+    @MainActor
+    func testOnlyALineThatOffersThePhotoPromisesItAtLargestTextSize() throws {
+        try checkPhotoOffer(textSize: Self.largestText, name: "result-viewNotOffered-AX5")
+    }
+
+    @MainActor
+    private func checkPhotoOffer(textSize: [String], name: String) throws {
+        let app = launch("view-not-offered", textSize: textSize)
+        defer { app.terminate() }
+        let offered = element(app, "check.ground_surface")
+        XCTAssertTrue(offered.waitForExistence(timeout: 10), "the ground check is not on the card")
+        XCTAssertEqual(offered.elementType, .button, "the ground's line should open the camera")
+        XCTAssertEqual(offered.label, "Ground under the spot: Not sure yet")
+        XCTAssertEqual(value(offered), "One more photo would settle this")
+
+        let notOffered = element(app, "check.front_clearance")
+        XCTAssertTrue(notOffered.exists, "the space in front is not on the card")
+        XCTAssertNotEqual(notOffered.elementType, .button, "a line with no view to take must not be a button")
+        XCTAssertEqual(notOffered.label, "Clear space in front: Not sure yet")
+        XCTAssertEqual(value(notOffered), "Needs an installer to check")
+        assertNoHandoff(notOffered.label + " " + value(notOffered))
+        scrollIntoView(notOffered, in: app)
+        attach(app, name: name)
     }
 
     // MARK: No spot and no closest spot

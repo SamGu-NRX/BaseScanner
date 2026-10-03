@@ -41,4 +41,17 @@ public enum ResultCardActions {
     public static func offersView(capturable: Bool, sourceAvailable: Bool) -> Bool {
         capturable && sourceAvailable
     }
+
+    /// True when a check's line offers the camera for the view that settles it: an UNSURE check
+    /// no person has to judge, whose settling view the server named (`settlingViewCapturable` is
+    /// nil when it named none) and the app can take now (`offersView`). The line's "Show me" and
+    /// its words both read this, so a line says one more photo would settle it only when it lets
+    /// the homeowner take that photo. A view the homeowner couldn't get to, or a request the app
+    /// can't plan, is not capturable.
+    public static func lineOffersView(
+        outcome: PlacementOutcome, needsPerson: Bool, settlingViewCapturable: Bool?, sourceAvailable: Bool
+    ) -> Bool {
+        outcome == .unsure && !needsPerson
+            && offersView(capturable: settlingViewCapturable == true, sourceAvailable: sourceAvailable)
+    }
 }
