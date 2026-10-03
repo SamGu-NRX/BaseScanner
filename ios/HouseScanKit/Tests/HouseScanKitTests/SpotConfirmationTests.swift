@@ -219,6 +219,22 @@ import Testing
         #expect(checks.leftUnchecked(besides: nil))
     }
 
+    /// "I can't check this area" about an area, then "It's clear" about a larger area round the
+    /// same footprint, then the original area shown again. The clear answer settles it, so the
+    /// result has no notice about the spot, and the earlier unchecked answer must still be said:
+    /// its claims stay withdrawn whatever is answered later (review of 6cd1248d).
+    @Test func aLaterClearAboutALargerAreaLeavesTheEarlierUncheckedOneToSay() {
+        var wider = Self.area
+        wider.span = 0.9...3.0
+        var checks = SpotConfirmations()
+        checks.record(Self.confirmation(Self.area, .cannotCheck))
+        #expect(!checks.leftUnchecked(besides: Self.area))
+        checks.record(Self.confirmation(wider, .clear))
+        #expect(checks.settling(Self.area)?.answer == .clear)
+        #expect(checks.leftUnchecked(besides: Self.area))
+        #expect(checks.leftUnchecked(besides: wider))
+    }
+
     /// The latest answer about an area wins whichever two it is, so "I can't check this area"
     /// after "Something's there" isn't read as an obstruction, and the other way round.
     @Test func cannotCheckAndSomethingThereReplaceEachOther() {

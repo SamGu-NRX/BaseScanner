@@ -229,14 +229,18 @@ public struct SpotConfirmations: Sendable, Equatable {
         records.last { $0.area.holds(area) }
     }
 
-    /// Whether an area other than `shown` was answered "I can't check this area" in this scan.
-    /// Its claims stay withdrawn for the rest of the scan (`CoverageMap.withdrawClaims`), so every
-    /// later answer rests on a stretch nobody checked, whatever spot it names. An answer whose
-    /// area holds `shown` is about the shown spot itself, which the result speaks of separately;
-    /// with no spot shown (nil), every such answer counts.
+    /// Whether this scan holds an "I can't check this area" answer that the result's notice about
+    /// the `shown` spot doesn't already speak for. Its claims stay withdrawn for the rest of the
+    /// scan (`CoverageMap.withdrawClaims`), so every later answer rests on a stretch nobody
+    /// checked, whatever spot it names. The spot's own notice speaks for answers about the shown
+    /// spot only when the answer that settles it (`settling`) is "I can't check this area"; when
+    /// a later "It's clear" about a larger area settles it instead, an earlier answer about the
+    /// same spot is still unchecked and still counts. With no spot shown (nil), every such answer
+    /// counts.
     public func leftUnchecked(besides shown: SpotArea?) -> Bool {
-        records.contains { record in
-            record.answer == .cannotCheck && !(shown.map { record.area.holds($0) } ?? false)
+        let spokenFor = shown.flatMap { area in settling(area)?.answer == .cannotCheck ? area : nil }
+        return records.contains { record in
+            record.answer == .cannotCheck && !(spokenFor.map { record.area.holds($0) } ?? false)
         }
     }
 }
