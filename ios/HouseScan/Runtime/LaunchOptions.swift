@@ -31,6 +31,7 @@ import OSLog
 /// - `-failCloseUpSave`: with `-replay`, every meter close-up's photo fails to save, as on a phone
 ///   with no space left, so a UI test reaches the save-failure retake and the skip after it. The
 ///   photo is dropped before `KeyframeStore.saveStill`, which then takes its own failure path.
+///   The retake reason stays up 10 s instead of 2, so the test's query can't miss it.
 /// - `-simulateAppStore`: run as an App Store install would, so the developer options and practice
 ///   meter are unavailable whatever the stored switch says (`DeveloperSettings`). It can only take
 ///   the switch away, never offer it.

@@ -25,8 +25,8 @@ final class CloseUpSaveFailureUITests: XCTestCase {
         app.buttons["action.markMeter"].tap()
         XCTAssertTrue(any["screen.meterCloseUp"].waitForExistence(timeout: 15))
 
-        // The reason stays up for `ScanEngine.retakeNotice` (2 s) before the gate's own problems
-        // can replace it, longer than the query's polling.
+        // Under `-failCloseUpSave` the reason stays up 10 s rather than 2 before the gate's own
+        // "Move closer" replaces it, so this query can't miss it.
         let saidNotSaved = any.matching(identifier: "closeUp.problem").matching(NSPredicate(format: "label == %@", Self.notSaved)).firstMatch
         XCTAssertTrue(saidNotSaved.waitForExistence(timeout: 60), "a close-up that didn't save never said so")
         snap(app, "meterCloseUp-photoNotSaved")

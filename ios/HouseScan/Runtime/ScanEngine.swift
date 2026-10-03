@@ -756,7 +756,7 @@ final class ScanEngine {
         state.coaching = coaching(for: frame.tracking, skip: nil)
         // After a retake request the shutter waits long enough for the reason to be read (and,
         // for "move closer", acted on) before the hold can start again.
-        if let retake = closeUpRetake, screenTime - retake.since < Self.retakeNotice {
+        if let retake = closeUpRetake, screenTime - retake.since < currentRetakeNotice {
             state.closeUp = .aiming(hold: 0, problem: retake.problem)
             return
         }
@@ -786,6 +786,10 @@ final class ScanEngine {
     /// Seconds a retake reason stays up before the next close-up can be taken. A guess to try
     /// on a phone, not measured: long enough to read one short line.
     private static let retakeNotice: Double = 2
+    /// Under `-failCloseUpSave` the reason stays up 10 s, so the UI test's query can't miss it:
+    /// the replay is close to the meter for under a second, and after the 2 s notice the gate's
+    /// "Move closer" replaces it.
+    private var currentRetakeNotice: Double { options.failCloseUpSave && replay != nil ? 10 : Self.retakeNotice }
 
     private var screenTime: Double { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000 }
 
@@ -846,33 +850,36 @@ final class ScanEngine {
                 RuntimeLog.engine.info("close-up from a discarded world frame dropped")
                 return
             }
-            let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
+            // Read back once, before the capture is acknowledged: the thumbnail and the meter
+            // reader both use these bytes, and a photo that can't be read back wasn't kept.
+            let file = store.directory.appending(path: "meter_close.jpg")
+            let readBack = await Task.detached(priority: .userInitiated) { () -> (jpeg: Data, thumbnail: CGImage?)? in
+                guard let jpeg = try? Data(contentsOf: file) else { return nil }
+                return (jpeg, ImageWork.uprightThumbnail(jpeg: jpeg))
+            }.value
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            state.closeUp = .captured(thumbnail)
+            guard let readBack else {
+                RuntimeLog.engine.error("close-up photo could not be read back")
+                closeUpCredit.photoChecked(view, passed: false)
+                retakeCloseUp(.photoNotSaved)
+                return
+            }
+            state.closeUp = .captured(readBack.thumbnail)
             state.captureCount += 1
-            state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: thumbnail)
-            await readMeterNumber(scan: scan, view: view)
+            state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: readBack.thumbnail)
+            await readMeterNumber(readBack.jpeg, scan: scan, view: view)
         }
     }
 
-    /// Reads the meter number from the saved close-up, off the main actor, then offers the
-    /// candidates for the homeowner to pick from (never filling one in) or asks for a retake.
+    /// Reads the meter number from the saved close-up's bytes, off the main actor, then offers
+    /// the candidates for the homeowner to pick from (never filling one in) or asks for a retake.
     /// `view` is the shot's, which coverage may take once the reader has passed its photo.
-    private func readMeterNumber(scan: Int, view: CloseUpView?) async {
+    private func readMeterNumber(_ jpeg: Data, scan: Int, view: CloseUpView?) async {
         state.meterNumber = .reading
         let reader = MeterNumberReaders.make()
-        let photo = store.directory.appending(path: "meter_close.jpg")
-        let readout = await Task.detached(priority: .userInitiated) { () -> MeterReadout? in
-            guard let jpeg = try? Data(contentsOf: photo) else { return nil }
-            return await reader.read(jpeg: jpeg)
-        }.value
+        let readout = await Task.detached(priority: .userInitiated) { await reader.read(jpeg: jpeg) }.value
         guard scan == generation, state.phase == .meterCloseUp, state.meterNumber == .reading else { return }
-        closeUpCredit.photoChecked(view, passed: readout?.photoPassedChecks == true)
-        guard let readout else {
-            RuntimeLog.engine.error("close-up photo could not be read back for the meter number")
-            retakeCloseUp(.photoNotSaved)
-            return
-        }
+        closeUpCredit.photoChecked(view, passed: readout.photoPassedChecks)
         guard !readout.candidates.isEmpty else {
             retakeCloseUp(readout.retake ?? .noNumber)
             return

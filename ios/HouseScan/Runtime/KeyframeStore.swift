@@ -222,14 +222,6 @@ final class KeyframeStore {
         stillCatalog.withdraw(Self.purpose(of: name))
     }
 
-    func thumbnail(ofStill name: String) async -> CGImage? {
-        let url = directory.appending(path: name)
-        return await Task.detached(priority: .utility) { () -> CGImage? in
-            guard let data = try? Data(contentsOf: url) else { return nil }
-            return ImageWork.uprightThumbnail(jpeg: data)
-        }.value
-    }
-
     /// Forgets keyframes and stills taken in a world frame that no longer exists (after a failed
     /// relocalization), the meter close-up included: export and the packet read only what
     /// `keyframes`, `stills` and `stillFrames` list, so a close-up skipped in the new frame exports
