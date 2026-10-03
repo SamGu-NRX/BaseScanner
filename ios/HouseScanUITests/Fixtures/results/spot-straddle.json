@@ -1,0 +1,203 @@
+{
+ "schema_version": "1.0",
+ "decision": "pass",
+ "summary": "Test answer for the spot check's wording: a spot from 1 ft 3 in left to 1 ft 6 in right of the meter. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
+ "reasons": [],
+ "policy": {
+  "id": "demo",
+  "version": "2026-09-26",
+  "auto_approve": true,
+  "sources": [
+   "public"
+  ],
+  "rules_sha256": "5a1e0c7d00000000000000000000000000000000000000000000000000000000",
+  "notice": "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
+ },
+ "spot": {
+  "outcome": "pass",
+  "wall_id": "wall",
+  "segment": 0,
+  "span_ft": [
+   -1.25,
+   1.5
+  ],
+  "width_ft": 2.75,
+  "depth_ft": 2.0,
+  "height_ft": 3.5,
+  "footprint": [
+   [
+    -1.25,
+    0.0
+   ],
+   [
+    1.5,
+    0.0
+   ],
+   [
+    1.5,
+    2.0
+   ],
+   [
+    -1.25,
+    2.0
+   ]
+  ],
+  "center": [
+   0.125,
+   1.0
+  ],
+  "along": [
+   1.0,
+   0.0
+  ],
+  "outward": [
+   0.0,
+   1.0
+  ],
+  "meter_offset_ft": [
+   0.125,
+   1.0
+  ],
+  "route_length_ft": 0.125
+ },
+ "route": {
+  "outcome": "pass",
+  "length_ft": 0.125,
+  "plus_minus_ft": 0.3,
+  "height_ft": 1.5,
+  "polyline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.125,
+    0.0
+   ]
+  ],
+  "detours": [],
+  "crossings": []
+ },
+ "checks": [
+  {
+   "id": "wall_backing",
+   "label": "Flush against one straight wall",
+   "outcome": "pass",
+   "reason": "Test: seen flat behind the whole spot.",
+   "measured_ft": null,
+   "plus_minus_ft": null,
+   "threshold_ft": null,
+   "comparison": null,
+   "subject": null,
+   "rule": {
+    "key": "wall_backing_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "gas_clearance",
+   "label": "Distance from gas equipment",
+   "outcome": "pass",
+   "reason": "Test: well clear.",
+   "measured_ft": 6.2,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "gas_clearance_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "opening_clearance",
+   "label": "Distance from doors and windows",
+   "outcome": "pass",
+   "reason": "Test: clear of the window.",
+   "measured_ft": 3.9,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "opening_clearance_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "meter_working_space",
+   "label": "Clear of the meter's working space",
+   "outcome": "pass",
+   "reason": "Test: clear of the working space.",
+   "measured_ft": 1.8,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 0.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "meter_working_space_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "route_length",
+   "label": "Cable run length",
+   "outcome": "pass",
+   "reason": "Test: short run.",
+   "measured_ft": 0.125,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 20.0,
+   "comparison": "at_most",
+   "subject": null,
+   "rule": {
+    "key": "route_length_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  }
+ ],
+ "nearest_considered": null,
+ "missing_evidence": [],
+ "ends": {
+  "left": {
+   "kind": "limit",
+   "s_ft": -8.0,
+   "point": [
+    -8.0,
+    0.0
+   ]
+  },
+  "right": {
+   "kind": "limit",
+   "s_ft": 12.0,
+   "point": [
+    12.0,
+    0.0
+   ]
+  }
+ },
+ "sweep": [
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    -1.25,
+    -0.25
+   ],
+   "outcome": "pass",
+   "failing": [],
+   "unsure": []
+  }
+ ],
+ "stats": {
+  "candidates": 36,
+  "pass": 4,
+  "unsure": 0,
+  "fail": 32,
+  "elapsed_ms": 0,
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ }
+}
