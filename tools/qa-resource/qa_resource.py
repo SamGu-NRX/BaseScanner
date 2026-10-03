@@ -386,12 +386,23 @@ def retained_blockers(jobs_dir, job_id):
         if record_path.parent.name == job_id:
             continue
         try:
-            records = json.loads(record_path.read_text()).get("escapedProcesses") or []
+            document = json.loads(record_path.read_text())
+            if not isinstance(document, dict):
+                raise ValueError("the record is not a JSON object")
+            records = document.get("escapedProcesses") or []
+            if not isinstance(records, list):
+                raise ValueError("escapedProcesses is not a list")
         except (OSError, ValueError) as error:
+            # Unreadable is unsure, not clear: wait and name the file to fix.
             reasons.append(f"cannot read retained processes in {record_path}: {error}")
             continue
         for record in records:
-            if record.get("outcome") != "retained":
+            if isinstance(record, dict) and record.get("outcome") not in ("retained", None):
+                continue
+            fields = [record.get(key) for key in ("pid", "start_us", "uid")] if isinstance(record, dict) else []
+            if (not isinstance(record, dict) or record.get("outcome") != "retained"
+                    or not all(type(value) is int for value in fields) or fields[0] <= 0):
+                reasons.append(f"malformed retained process record in {record_path}: {record!r}")
                 continue
             current = kernel_identity(record["pid"])
             if (current is not None and not current["zombie"]
@@ -619,9 +630,10 @@ class OwnedProcesses:
         return list(current.values()), complete
 
     def retained(self, identities):
+        # Every proven identity still alive is recorded, including one whose cached group is
+        # still the payload's: without a record, a later admission could not wait for it.
         for identity in identities:
-            if identity_key(identity) in self.escaped:
-                self.record(identity, "retained")
+            self.record(identity, "retained")
         return "; ".join(f"PID {p['pid']} ({p['comm']}) start {p['start']} "
                          f"start_us {p['start_us']} uid {p['uid']}" for p in identities)
 

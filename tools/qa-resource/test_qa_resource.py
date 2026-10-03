@@ -1298,6 +1298,54 @@ class OwnershipTests(unittest.TestCase):
              patch.object(qa, "process_env", side_effect=OSError(qa.errno.ESRCH, "gone")):
             self.assertEqual(qa.owned_processes(job, 99), [])
 
+    def test_retained_records_block_only_a_matching_live_execution(self):
+        uid = os.getuid()
+        with tempfile.TemporaryDirectory() as temp:
+            jobs = Path(temp)
+            def job(name, document):
+                (jobs / name).mkdir()
+                (jobs / name / "job.json").write_text(document if isinstance(document, str) else json.dumps(document))
+            retained = lambda pid, **changes: dict(dict(pid=pid, start_us=pid * 10, uid=uid, comm="helper",
+                                                        outcome="retained"), **changes)
+            job("live", dict(escapedProcesses=[retained(201), dict(retained(202), outcome="exited")]))
+            job("gone", dict(escapedProcesses=[retained(203), retained(204), retained(205)]))
+            job("self", dict(escapedProcesses=[retained(206)]))
+            job("array", "[1, 2]")
+            job("partial", '{"escapedProcesses": [')
+            job("not-list", dict(escapedProcesses={"pid": 207}))
+            job("bad-fields", dict(escapedProcesses=[dict(retained(208), start_us="2080"), {"outcome": "retained"}, "x"]))
+            kernel = {201: dict(start_us=2010, uid=uid, zombie=False),
+                      203: dict(start_us=2031, uid=uid, zombie=False),      # PID reused.
+                      204: dict(start_us=2040, uid=uid + 1, zombie=False),  # Another uid.
+                      205: dict(start_us=2050, uid=uid, zombie=True),
+                      206: dict(start_us=2060, uid=uid, zombie=False),
+                      208: dict(start_us=2080, uid=uid, zombie=False)}
+            with patch.object(qa, "kernel_identity", side_effect=lambda pid: dict(kernel[pid], pid=pid) if pid in kernel else None), \
+                 patch.object(qa.os, "kill", side_effect=AssertionError("admission signalled a PID")):
+                pids, reasons = qa.retained_blockers(jobs, "self")
+        self.assertEqual(pids, [201])
+        text = "\n".join(reasons)
+        self.assertIn("retained process 201 (helper) from job live is still alive", text)
+        for name in ("array", "partial", "not-list"):
+            self.assertIn(f"cannot read retained processes in {jobs / name / 'job.json'}", text)
+        self.assertEqual(text.count(f"malformed retained process record in {jobs / 'bad-fields' / 'job.json'}"), 3)
+        self.assertEqual(len(reasons), 7)
+
+    def test_live_identity_in_the_payload_group_is_recorded_retained(self):
+        member = dict(pid=125, pgid=99, ppid=1, stat="S", uid=os.getuid(), start_us=125, start="date",
+                      comm="member", proof="token")
+        reports = []
+        owned, clock = qa.OwnedProcesses({}, 99, report=lambda identity, outcome: reports.append((identity["pid"], outcome))), [0.0]
+        def sleep(seconds):
+            clock[0] += seconds + .001
+        with patch.object(owned, "snapshot", return_value=([member], True)), \
+             patch.object(qa, "group_has_members", return_value=False), \
+             patch.object(qa.time, "monotonic", side_effect=lambda: clock[0]), \
+             patch.object(qa.time, "sleep", side_effect=sleep):
+            with self.assertRaisesRegex(RuntimeError, "retained: PID 125 \\(member\\)"):
+                qa.confirm_owned_exit(Mock(pid=99), owned, .5)
+        self.assertEqual(reports, [(125, "retained")])
+
     def test_confirmation_needs_two_complete_empty_passes_after_every_reset(self):
         previous = dict(pid=123, start_us=123, uid=os.getuid(), pgid=123,
                         start="date", comm="python", proof="token")
