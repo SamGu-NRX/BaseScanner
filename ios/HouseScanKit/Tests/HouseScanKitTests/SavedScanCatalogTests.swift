@@ -267,6 +267,46 @@ import Testing
         SavedScanStaging(root: root.appending(path: "absent")).removeOtherSessions()
     }
 
+    /// Two Saved scans sheets in one app run (two windows, if the app ever allows them) share a
+    /// session: opening one, which clears other runs' copies, never deletes the copy the other
+    /// is sharing, and each removes only the copy it made.
+    @Test func sheetsInOneRunNeverDeleteEachOthersCopies() throws {
+        defer { cleanUp() }
+        try scan("one")
+        let shares = root.appending(path: "share")
+        let first = SavedScanStaging(root: shares, session: "run")
+        let second = SavedScanStaging(root: shares, session: "run")
+        let listed = try #require(SavedScanCatalog(root: root).scans().first)
+        let sharing = try first.stage(listed)
+
+        second.removeOtherSessions()
+        let other = try second.stage(listed)
+        second.remove(other)
+        #expect(try Data(contentsOf: sharing) == Self.packet)
+        #expect(!files.fileExists(atPath: other.path))
+    }
+
+    /// A share outlives a new scan: the new store's cleanup deletes the scan's own folder, and
+    /// the copy the share sheet is reading, in its own folder, keeps the bundle's bytes.
+    @Test func aCopyBeingSharedSurvivesANewScansCleanup() throws {
+        defer { cleanUp() }
+        try scan("old", minutesAgo: 90)
+        try scan("newer", minutesAgo: 30)
+        try scan("newest", minutesAgo: 5)
+        let staging = SavedScanStaging(root: files.temporaryDirectory.appending(path: "share-\(UUID().uuidString)"))
+        defer { try? files.removeItem(at: staging.root) }
+        let older = try #require(SavedScanCatalog(root: root).scans().last)
+        let copy = try staging.stage(older)
+
+        // Two newer completed scans push it out: a new scan's store deletes its folder.
+        try scan("evenNewer", minutesAgo: 1)
+        let cleanup = ScanFolderCleanup(root: root, keeping: "fresh")
+        #expect(cleanup.obsolete.map(\.lastPathComponent).contains(older.id))
+        #expect(cleanup.run().isEmpty)
+        #expect(!files.fileExists(atPath: older.archive.path))
+        #expect(try Data(contentsOf: copy) == Self.packet)
+    }
+
     // MARK: Names
 
     @Test func theShareNameSaysWhenAndWhetherPractice() {
