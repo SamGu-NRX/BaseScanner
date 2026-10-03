@@ -15,6 +15,8 @@ import SwiftUI
 ///   question answered, so it shows as the folded row with Change.
 /// - `-uiDemoOffline`: uploads fail offline.
 /// - `-uiDemoRejected`: the server refuses the first upload; "Back to review" then sends it again.
+/// - `-uiDemoUnusableAnswer <n>`: the first `n` answers can't be used (1 if `n` is missing);
+///   "Try again" sends the scan again, and the answer after them is the result.
 /// - `-uiDemoFailure <cameraDenied|arUnsupported|sessionFailed|replayUnreadable>`: open on the
 ///   unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.

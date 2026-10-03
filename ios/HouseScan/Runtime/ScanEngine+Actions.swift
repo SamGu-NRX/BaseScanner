@@ -561,9 +561,14 @@ extension ScanEngine: ScanActions {
         }
     }
 
+    /// Sends the same scan again, only when the homeowner asks: after a network or server failure,
+    /// or an answer House Scan couldn't use. Never after a refusal, which the review has to fix.
     func retryUpload() {
         guard state.phase == .uploading else { return }
-        if case .failed = state.upload { startUpload() }
+        switch state.upload {
+        case .failed, .unusableAnswer: startUpload()
+        case .idle, .packaging, .uploading, .analyzing, .rejected, .done: break
+        }
     }
 
     /// Back to the feature review after a rejected upload. The scan (wall, coverage, keyframes,
