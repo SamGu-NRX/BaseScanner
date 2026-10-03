@@ -747,7 +747,7 @@ enum ScanCopy {
     /// `spoken` spells out feet and inches for VoiceOver, which reads "ft" and "in" as letters.
     ///
     /// When the server's review line explains an unsure check (`reviewBand`), the rule names it too:
-    /// "Measured 16 ft. The rule is at most 20 ft, and anything over 15 ft needs an installer's
+    /// "Measured 16 ft. The rule is at most 20 ft, and anything 15 ft or more needs an installer's
     /// review. The measurement can be off by about 6 in." Without it, a cable run inside the
     /// maximum read as passing under "Not sure yet". It says what the rule needs, never that a
     /// review was sent: the app contacts nobody.
@@ -772,14 +772,16 @@ enum ScanCopy {
         return parts.joined(separator: " ")
     }
 
-    /// "anything over 15 ft" under a maximum, "anything under 4 ft" over a minimum: the side of the
+    /// "anything 15 ft or more" under a maximum, "anything 4 ft or less" over a minimum: the side of the
     /// check's review line that needs review. Nil unless the line explains this check's outcome
     /// (`CheckRow.reviewBandApplies`).
     static func reviewBand(_ row: CheckRow, length: (Float) -> String = Distance.feetAndInches) -> String? {
         guard row.reviewBandApplies, let review = row.reviewThreshold, let comparison = row.comparison else { return nil }
         return switch comparison {
-        case .atMost: "anything over \(length(review))"
-        case .atLeast: "anything under \(length(review))"
+        // Inclusive: a confident pass needs measured + error < review_threshold_ft (at_most), so a
+        // value landing exactly on the line already needs review (result.schema.json).
+        case .atMost: "anything \(length(review)) or more"
+        case .atLeast: "anything \(length(review)) or less"
         }
     }
 
