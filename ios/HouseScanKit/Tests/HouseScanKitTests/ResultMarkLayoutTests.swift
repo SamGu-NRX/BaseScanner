@@ -1,3 +1,4 @@
+import Foundation
 import HouseScanKit
 import Testing
 
@@ -68,5 +69,66 @@ import Testing
         #expect(dashes.starts == [0])
         #expect(dashes.length == 0.13)
         #expect(ResultMarkLayout.dashes(along: 0, dash: 0.1, gap: 0.06).starts.isEmpty)
+    }
+
+    // MARK: Sweep zones
+
+    private static let battery = ResultMarkLayout.BatterySize(width: 0.75, depth: 0.5)
+
+    /// With no battery size (no spot and no nearest spot) there is no zone, however many runs
+    /// the sweep has: a run's starts are not a footprint, and the app has no size of its own.
+    @Test func noBatterySizeDrawsNoZone() {
+        let starts: [SIMD2<Float>] = [SIMD2(-0.3, -0.3), SIMD2(6.4, 10.2), SIMD2(1, 2.5)]
+        #expect(ResultMarkLayout.sweepZones(starts: starts, battery: nil).isEmpty)
+        #expect(ResultMarkLayout.sweepZones(starts: [], battery: nil).isEmpty)
+    }
+
+    /// A run's starts are battery left edges, so its zone reaches one battery width past the
+    /// larger start and is one battery deep: the drawing a dimensioned spot or nearest spot got
+    /// before, value for value.
+    @Test func aSizedRunReachesOneBatteryPastItsLastStart() {
+        let zones = ResultMarkLayout.sweepZones(starts: [SIMD2(1, 2.5)], battery: Self.battery)
+        #expect(zones == [ResultMarkLayout.SweepZone(span: 1...3.25, depth: 0.5)])
+    }
+
+    /// Either order of a run's two starts gives the same zone, and a run of one start is one
+    /// battery wide.
+    @Test func aRunsStartsMayComeInEitherOrder() {
+        let zones = ResultMarkLayout.sweepZones(starts: [SIMD2(2.5, 1), SIMD2(-1, -1)], battery: Self.battery)
+        #expect(zones == [
+            ResultMarkLayout.SweepZone(span: 1...3.25, depth: 0.5),
+            ResultMarkLayout.SweepZone(span: -1...(-0.25), depth: 0.5),
+        ])
+    }
+
+    /// One zone per run, in the sweep's order, so the caller can pair them by position.
+    @Test func zonesFollowTheRunsInOrder() {
+        let starts: [SIMD2<Float>] = [SIMD2(-2, -1), SIMD2(0, 0.5), SIMD2(3, 4)]
+        let zones = ResultMarkLayout.sweepZones(starts: starts, battery: Self.battery)
+        #expect(zones.map(\.span.lowerBound) == [-2, 0, 3])
+        #expect(zones.map(\.span.upperBound) == [-0.25, 1.25, 4.75])
+        #expect(zones.allSatisfy { $0.depth == 0.5 })
+    }
+
+    /// The UI tests' answer with neither a spot nor a nearest spot still has sweep runs, which
+    /// is the case the zones above must not be drawn for. The reject's nearest spot has a size.
+    @Test func theUIResultFilesCoverBothCases() throws {
+        let unsized = try PlacementResult.decode(Data(contentsOf: Self.uiResultFile("no-spot-no-nearest")))
+        #expect(unsized.spot == nil)
+        #expect(unsized.nearestConsidered == nil)
+        #expect(!unsized.sweep.isEmpty)
+        let sized = try PlacementResult.decode(Data(contentsOf: Self.uiResultFile("reject-nearest")))
+        #expect(sized.spot == nil)
+        #expect(sized.nearestConsidered != nil)
+        #expect(!sized.sweep.isEmpty)
+    }
+
+    private static func uiResultFile(_ name: String, file: String = #filePath) -> URL {
+        URL(fileURLWithPath: file)
+            .deletingLastPathComponent()  // HouseScanKitTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // HouseScanKit
+            .deletingLastPathComponent()  // ios
+            .appendingPathComponent("HouseScanUITests/Fixtures/results/\(name).json")
     }
 }

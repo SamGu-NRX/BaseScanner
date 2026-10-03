@@ -1,0 +1,242 @@
+{
+ "schema_version": "1.0",
+ "decision": "manual_review",
+ "summary": "Test answer: a person needs to check the best spot, 15 ft 3 in right of the meter: cable run length. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
+ "reasons": [
+  {
+   "code": "unsure_checks",
+   "checks": [
+    "route_length"
+   ],
+   "message": "The best spot has checks nobody can settle from this scan: cable run length."
+  }
+ ],
+ "policy": {
+  "id": "demo",
+  "version": "2026-09-26",
+  "auto_approve": true,
+  "sources": [
+   "public"
+  ],
+  "rules_sha256": "5a1e0c7d00000000000000000000000000000000000000000000000000000000",
+  "notice": "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
+ },
+ "spot": {
+  "outcome": "unsure",
+  "wall_id": "wall",
+  "segment": 0,
+  "span_ft": [
+   14.0,
+   16.583333333333
+  ],
+  "width_ft": 2.583333333333,
+  "depth_ft": 1.833333333333,
+  "height_ft": 3.291666666667,
+  "footprint": [
+   [
+    14.0,
+    0.0
+   ],
+   [
+    16.583333333333,
+    0.0
+   ],
+   [
+    16.583333333333,
+    1.833333333333
+   ],
+   [
+    14.0,
+    1.833333333333
+   ]
+  ],
+  "center": [
+   15.2916666666665,
+   0.9166666666665
+  ],
+  "along": [
+   1.0,
+   0.0
+  ],
+  "outward": [
+   0.0,
+   1.0
+  ],
+  "meter_offset_ft": [
+   15.2916666666665,
+   0.9166666666665
+  ],
+  "route_length_ft": 16.0
+ },
+ "route": {
+  "outcome": "unsure",
+  "length_ft": 16.0,
+  "plus_minus_ft": 0.5,
+  "height_ft": 1.5,
+  "polyline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    14.0,
+    0.0
+   ]
+  ],
+  "detours": [],
+  "crossings": []
+ },
+ "checks": [
+  {
+   "id": "wall_backing",
+   "label": "Flush against one straight wall",
+   "outcome": "pass",
+   "reason": "Test: seen flat behind the whole spot.",
+   "measured_ft": null,
+   "plus_minus_ft": null,
+   "threshold_ft": null,
+   "comparison": null,
+   "subject": null,
+   "rule": {
+    "key": "wall_backing_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "gas_clearance",
+   "label": "Distance from gas equipment",
+   "outcome": "pass",
+   "reason": "Test: well clear.",
+   "measured_ft": 6.2,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "gas_clearance_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "opening_clearance",
+   "label": "Distance from doors and windows",
+   "outcome": "pass",
+   "reason": "Test: clear of the window.",
+   "measured_ft": 3.9,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "opening_clearance_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "meter_working_space",
+   "label": "Clear of the meter's working space",
+   "outcome": "pass",
+   "reason": "Test: clear of the working space.",
+   "measured_ft": 1.8,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 0.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "meter_working_space_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "route_length",
+   "label": "Cable run length",
+   "outcome": "unsure",
+   "reason": "The cable run is 16 ft 0 in (± 0 ft 6 in): past the 15 ft 0 in confident reach, so the policy sends it to a person, though under the 20 ft 0 in maximum.",
+   "measured_ft": 16.0,
+   "plus_minus_ft": 0.5,
+   "threshold_ft": 20.0,
+   "comparison": "at_most",
+   "subject": null,
+   "rule": {
+    "key": "route.max_ft",
+    "source": "Made-up test value. Review past 15 ft 0 in: made-up test value",
+    "placeholder": true
+   },
+   "unsure_cause": "rule_requires_review",
+   "review_threshold_ft": 15.0
+  }
+ ],
+ "nearest_considered": null,
+ "missing_evidence": [],
+ "ends": {
+  "left": {
+   "kind": "limit",
+   "s_ft": -8.0,
+   "point": [
+    -8.0,
+    0.0
+   ]
+  },
+  "right": {
+   "kind": "limit",
+   "s_ft": 24.0,
+   "point": [
+    24.0,
+    0.0
+   ]
+  }
+ },
+ "sweep": [
+  {
+   "wall_id": "wall",
+   "segment": 0,
+   "start_ft": [
+    -8.0,
+    12.416667
+   ],
+   "outcome": "fail",
+   "failing": [
+    "opening_clearance"
+   ],
+   "unsure": []
+  },
+  {
+   "wall_id": "wall",
+   "segment": 0,
+   "start_ft": [
+    12.5,
+    18.0
+   ],
+   "outcome": "unsure",
+   "failing": [],
+   "unsure": [
+    "route_length"
+   ]
+  },
+  {
+   "wall_id": "wall",
+   "segment": 0,
+   "start_ft": [
+    18.083333,
+    21.416667
+   ],
+   "outcome": "fail",
+   "failing": [
+    "route_length"
+   ],
+   "unsure": []
+  }
+ ],
+ "stats": {
+  "candidates": 36,
+  "pass": 0,
+  "unsure": 7,
+  "fail": 29,
+  "elapsed_ms": 0,
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ }
+}

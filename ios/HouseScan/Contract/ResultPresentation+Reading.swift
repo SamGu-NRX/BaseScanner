@@ -47,11 +47,23 @@ extension ResultPresentation {
         ResultReading.cardLines(readingChecks).map { checks[$0] }
     }
 
+    /// The view `row`'s line on the card offers to take, or nil: the view the server named to
+    /// settle it (`settledBy`), when `ResultCardActions.lineOffersView` says the line offers it.
+    /// The line's "Show me" and its words (`ScanCopy.cardLine`, `ScanCopy.unsureNote`) both read
+    /// this, so the words never promise a photo the line doesn't let the homeowner take.
+    func offeredView(for row: CheckRow, sourceAvailable: Bool) -> MissingEvidence? {
+        let view = row.settledBy.flatMap { id in missing.first { $0.id == id } }
+        guard ResultCardActions.lineOffersView(
+            outcome: row.outcome.placementOutcome, needsPerson: row.needsPerson,
+            settlingViewCapturable: view?.capturable, sourceAvailable: sourceAvailable)
+        else { return nil }
+        return view
+    }
+
     /// The view that would settle `row` and that the camera can take now: only for an unsure
-    /// check a person needn't judge.
+    /// check a person needn't judge. `offeredView` with the camera up.
     func viewToTake(for row: CheckRow) -> MissingEvidence? {
-        guard row.outcome == .unsure, !row.needsPerson, let id = row.settledBy else { return nil }
-        return missing.first { $0.id == id && $0.capturable }
+        offeredView(for: row, sourceAvailable: true)
     }
 
     /// The first view in `missing` that settles an unsure check and can be taken now.
