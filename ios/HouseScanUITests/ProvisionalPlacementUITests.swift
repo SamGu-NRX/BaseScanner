@@ -90,6 +90,28 @@ final class ProvisionalPlacementUITests: XCTestCase {
         try checkPassFixture(textSize: Self.largestText, name: "result-candidate-AX5")
     }
 
+    /// A result that isn't a possible spot keeps its summary in Details, and the summary never
+    /// claims a fit: the demo's review answer and its working-space overlap.
+    @MainActor
+    func testAReviewSummaryNeverClaimsAFit() throws {
+        for extra in [[], ["-uiDemoOverlap"]] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result"] + extra
+            app.launch()
+            let any = app.descendants(matching: .any)
+            XCTAssertTrue(any["screen.result"].waitForExistence(timeout: 15))
+            XCTAssertNotEqual(any["result.headline"].label, Self.candidate, "\(extra)")
+            let details = any["result.details"]
+            scroll(to: details, in: app)
+            details.tap()
+            let summary = any["result.summary"]
+            XCTAssertTrue(summary.waitForExistence(timeout: 10), "\(extra): a review answer's summary is missing")
+            assertNoFitWords(summary.label)
+            XCTAssertFalse(summary.label.lowercased().contains("fits"), summary.label)
+            app.terminate()
+        }
+    }
+
     /// A rejected wall keeps its negative answer and its reasons.
     @MainActor
     func testARejectStaysNegative() throws {

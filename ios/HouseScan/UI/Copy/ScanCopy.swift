@@ -720,7 +720,7 @@ enum ScanCopy {
     static let installerConfirms = "Before any battery goes in, an installer has to confirm where it goes on site."
     static let rulesNotFinal = "The placement rules aren't final yet, so every result needs an installer's review for now."
     // The server's result covers where the battery goes, not the panel itself.
-    static let panelReview = "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go."
+    static let panelReview = "Your electrical panel still needs an electrician's review. This scan only suggests where the battery could go."
 
     /// Which rules answered, for a reviewer: "Rules 2f52ec35".
     static func rulesHash(_ hash: String) -> String {

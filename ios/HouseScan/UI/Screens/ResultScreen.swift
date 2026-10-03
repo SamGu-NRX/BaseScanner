@@ -162,10 +162,12 @@ struct ResultScreen: View {
     private func details(_ result: ResultPresentation) -> some View {
         DisclosureGroup(isExpanded: $detailsExpanded) {
             VStack(alignment: .leading, spacing: 22) {
-                // A possible spot's summary is the server's own pass ("fits every check"), which
-                // the card's candidate note contradicts on purpose; the summary of any other answer
-                // explains what failed or is unsure, so it stays.
-                if !result.summary.isEmpty, result.answer != .candidate {
+                // A pass's summary, and a possible spot's under manual review, is the server's own
+                // pass ("fits every check"), which the card's candidate note contradicts on
+                // purpose; a pass the reading sends to an installer contradicts itself and says the
+                // same. Manual review and reject summaries explain what failed or is unsure, so
+                // they stay.
+                if !result.summary.isEmpty, result.decision != .pass, result.answer != .candidate {
                     Text(result.summary)
                         .font(Typeface.hint)
                         .foregroundStyle(Palette.muted)
