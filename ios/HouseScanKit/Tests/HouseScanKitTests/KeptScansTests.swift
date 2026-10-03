@@ -219,6 +219,173 @@ import Testing
         #expect(try Set(files.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "rewritten", "startsWriting", "finishesWriting"])
     }
 
+    // MARK: A bundle still being written when Start over lists its folder (B44)
+
+    /// A scan folder whose bundle is being written: the photos, stamp and raw streams the packet
+    /// is built from and the half-assembled `packet/`, but no `scan.zip` yet.
+    static func packing(_ name: String, in root: URL) throws -> URL {
+        try scan(name, in: root)
+        let folder = root.appending(path: name)
+        let files = FileManager.default
+        try Data("{}".utf8).write(to: folder.appending(path: "scan-stamp.json"))
+        try files.createDirectory(at: folder.appending(path: "streams-raw"), withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: folder.appending(path: "streams-raw/trajectory.bin"))
+        try files.createDirectory(at: folder.appending(path: "packet/photos"), withIntermediateDirectories: true)
+        try Data("photo".utf8).write(to: folder.appending(path: "packet/photos/p00001.jpg"))
+        return folder
+    }
+
+    /// What a bundle write leaves when it ends.
+    enum WriteEnd: Sendable, CaseIterable {
+        /// The zip written to the end and `packet/` removed, as `zipPacket` does.
+        case bundled
+        /// It failed before zipping: `packet/` is left and there is no zip.
+        case failedBeforeZipping
+        /// A zip cut short is left.
+        case partialZip
+
+        func apply(to folder: URL) throws {
+            let bundle = folder.appending(path: ScanFolderCleanup.bundleName)
+            switch self {
+            case .bundled:
+                try KeptScansTests.packet.write(to: bundle)
+                try FileManager.default.removeItem(at: folder.appending(path: "packet"))
+            case .failedBeforeZipping:
+                break
+            case .partialZip:
+                try KeptScansTests.packet.prefix(KeptScansTests.packet.count / 2).write(to: bundle)
+            }
+        }
+    }
+
+    /// A bundle write the test holds open, then ends as `end` says; like the app's, it starts
+    /// only after the write before it (`after`).
+    struct HeldWrite {
+        let task: Task<Void, Never>
+        private let release: AsyncStream<Void>.Continuation
+
+        init(_ folder: URL, ending end: WriteEnd, after earlier: Task<Void, Never>? = nil) {
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            self.release = release
+            task = Task {
+                await earlier?.value
+                for await _ in gate { break }
+                try? end.apply(to: folder)
+            }
+        }
+
+        func finish() { release.finish() }
+    }
+
+    /// Deletes with `run(after:)`, waiting for `writes` as the app does, and says through
+    /// `arrived` when it has reached that wait. Returns the folders it failed to delete.
+    static func deleting(_ cleanup: ScanFolderCleanup, after writes: Task<Void, Never>?, arrived: AsyncStream<Void>.Continuation) -> Task<[URL], Never> {
+        Task {
+            await cleanup.run(after: {
+                arrived.yield()
+                await writes?.value
+            }).map(\.url)
+        }
+    }
+
+    /// Start over lists the previous scan's folder while its bundle is still being assembled:
+    /// with no zip yet it is listed as never packaged. The deletion waits for the write; a zip
+    /// written to the end keeps the folder, one cut short keeps it without a place (as any
+    /// partial bundle), and a write that failed before zipping leaves it to be deleted.
+    @Test(arguments: WriteEnd.allCases)
+    func aBundleStillBeingWrittenIsJudgedOnlyAfterItsWrite(end: WriteEnd) async throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = try Self.packing("previous", in: root)
+        try Self.scan("new", in: root)
+        let write = HeldWrite(folder, ending: end)
+
+        let cleanup = ScanFolderCleanup(root: root, keeping: "new")
+        // What B44 deleted: the folder being written is listed with the never-packaged ones.
+        #expect(Self.names(cleanup.obsolete) == ["previous"])
+        let (arrived, arrive) = AsyncStream<Void>.makeStream()
+        let deleting = Self.deleting(cleanup, after: write.task, arrived: arrive)
+        var arrivals = arrived.makeAsyncIterator()
+        _ = await arrivals.next()
+        // The cleanup is waiting for the write, which is still assembling the packet.
+        #expect(FileManager.default.fileExists(atPath: folder.appending(path: "packet/photos/p00001.jpg").path))
+
+        write.finish()
+        #expect(await deleting.value.isEmpty)
+        let next = ScanFolderCleanup(root: root, keeping: "next")
+        switch end {
+        case .bundled:
+            #expect(FileManager.default.fileExists(atPath: folder.appending(path: ScanFolderCleanup.bundleName).path))
+            #expect(Self.names(next.keptCompleted) == ["previous"])
+        case .failedBeforeZipping:
+            #expect(!FileManager.default.fileExists(atPath: folder.path))
+        case .partialZip:
+            #expect(FileManager.default.fileExists(atPath: folder.path))
+            #expect(Self.names(next.incompleteBundles) == ["previous"])
+            #expect(!Self.names(next.obsolete).contains("previous"))
+        }
+    }
+
+    /// At launch there is no write to wait for: the deletion is `run()`'s, at once.
+    @Test func withNoWriteTheDeletionRunsAtOnce() async throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.scan("abandoned", in: root)
+        try Self.scan("run1", in: root, bundledMinutesAgo: 90)
+        try Self.scan("run2", in: root, bundledMinutesAgo: 30)
+        try Self.scan("run3", in: root, bundledMinutesAgo: 5)
+        try Self.scan("now", in: root)
+
+        let none: Task<Void, Never>? = nil
+        let failed = await ScanFolderCleanup(root: root, keeping: "now").run(after: { await none?.value })
+        #expect(failed.isEmpty)
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: root.path)) == ["now", "run2", "run3"])
+    }
+
+    /// Start over twice while the first scan's bundle is written. The second scan's write, if it
+    /// runs, waits for the first; each cleanup waits for the chain as it stood when it listed.
+    /// The first scan's bundle is kept, the second scan's is kept only if it was written (a write
+    /// queued for a scan already started over is skipped), and the newest folders are never
+    /// listed.
+    @Test(arguments: [true, false])
+    func rapidStartOversWaitForTheWholeChain(secondScanWrites: Bool) async throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = try Self.packing("first", in: root)
+        let firstWrite = HeldWrite(first, ending: .bundled)
+
+        try Self.scan("second", in: root)
+        let firstCleanup = ScanFolderCleanup(root: root, keeping: "second")
+        #expect(Self.names(firstCleanup.obsolete) == ["first"])
+        let second = root.appending(path: "second")
+        let secondWrite = Task {
+            await firstWrite.task.value
+            if secondScanWrites { try? WriteEnd.bundled.apply(to: try Self.packing("second", in: root)) }
+        }
+
+        try Self.scan("third", in: root)
+        let secondCleanup = ScanFolderCleanup(root: root, keeping: "third")
+        #expect(Self.names(secondCleanup.obsolete) == ["first", "second"])
+        try Self.scan("fourth", in: root)
+
+        let (arrived, arrive) = AsyncStream<Void>.makeStream()
+        let deletingFirst = Self.deleting(firstCleanup, after: firstWrite.task, arrived: arrive)
+        let deletingSecond = Self.deleting(secondCleanup, after: secondWrite, arrived: arrive)
+        var arrivals = arrived.makeAsyncIterator()
+        _ = await arrivals.next()
+        _ = await arrivals.next()
+        #expect(FileManager.default.fileExists(atPath: first.appending(path: "packet").path))
+
+        firstWrite.finish()
+        #expect(await deletingFirst.value.isEmpty)
+        #expect(await deletingSecond.value.isEmpty)
+        var expected: Set<String> = ["first", "third", "fourth"]
+        if secondScanWrites { expected.insert("second") }
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: root.path)) == expected)
+        #expect(FileManager.default.fileExists(atPath: first.appending(path: ScanFolderCleanup.bundleName).path))
+        #expect(FileManager.default.fileExists(atPath: second.path) == secondScanWrites)
+    }
+
     /// Bundles saved at the same moment keep the order by name, newest name first, as before.
     @Test func equalSaveTimesFallBackToNameOrder() throws {
         let root = try Self.makeRoot()
