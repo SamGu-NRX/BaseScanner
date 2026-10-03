@@ -147,16 +147,18 @@ extension ScanEngine: ScanActions {
     /// autopilot's) marks the side it lands on, as before.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
         guard state.phase == .wallWalk || (state.phase == .gapRequest && pastEndSide != nil),
-              let wall = coverage?.wall, let frame = currentFrame else { return }
-        var asked: WallSide?
-        if point == nil, state.phase == .wallWalk, case .markEnd(let side) = state.guidance { asked = side }
-        if asked != nil, frame.tracking != .normal { return refuseEndMark(.trackingNotReady) }
-        guard let hit = wallHit(point, viewSize: viewSize, frame: frame, wall: wall) else {
-            if asked != nil { refuseEndMark(.noWall) }
-            return
+              let map = coverage, let frame = currentFrame else { return }
+        let hit: WallPoint
+        if point == nil, state.phase == .wallWalk, case .markEnd(let asked) = state.guidance {
+            switch circleEnd(asked: asked, frame: frame, map: map) {
+            case .success(let found): hit = found
+            case .failure(let refusal): return refuseEndMark(refusal)
+            }
+        } else {
+            guard let found = wallHit(point, viewSize: viewSize, frame: frame, wall: map.wall) else { return }
+            hit = found
         }
         let side: WallSide = hit.s < 0 ? .left : .right
-        if let asked, side != asked { return refuseEndMark(.otherSide(side)) }
         if state.phase == .gapRequest, side != pastEndSide { return }
         state.endMarkRefusal = nil
         // Unexplored until the homeowner says something blocks the wall there: an unanswered
@@ -494,7 +496,9 @@ extension ScanEngine: ScanActions {
         case .wallWalk:
             guard coverage != nil, !state.endScanQuestion else { return }
             let task = ScanEngine.name(state.guidance)
-            if isWalkTask, state.endQuestion == nil, state.marking == nil, !state.overheadQuestion,
+            // Only the walk's own "Can't get there": "The wall keeps going" on the end card answers
+            // a question rather than refusing one, so it never asks to end the scan.
+            if case .walk = state.guidance, state.endQuestion == nil, state.marking == nil, !state.overheadQuestion,
                state.nextWallConfirm == nil, walkRefusals.asksToEndScan(at: ScanEngine.refusalClock) {
                 // A second "Can't get there" on a walk card soon after the last ended a side:
                 // the homeowner may be trying to stop, so ask before ending this side too (#82).
@@ -527,10 +531,14 @@ extension ScanEngine: ScanActions {
                         for index in ScanEngine.hiddenCells(map, band: band, around: s) { map.markSkipped(band, map.cellRange(index)) }
                     }
                 }
-            case .walk(let side, _), .markEnd(let side):
+            case .walk(let side, _):
                 // The walk can't continue this way: stop the wall where the phone is, as an
                 // unexplored end (`WalkedEnd`), where the strip's preview showed it.
                 endWalkCannotGoOn(side)
+            case .markEnd(let side):
+                // "The wall keeps going": the same unexplored end where the phone is, but not a
+                // refusal, so it doesn't count toward "End the scan here?" (#82).
+                endWalkCannotGoOn(side, refused: false)
             case .tiltUp:
                 settleTiltUp(clear: false)
             case .markNextWall:

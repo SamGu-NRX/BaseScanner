@@ -327,7 +327,6 @@ final class DemoEngine: ScanActions {
         placeMeter()
         finishedWalkState()
         state.phase = .wallWalk
-        state.closeUp = .captured(DemoScene.meterThumbnail)
         refreshGuidance()
         run { engine in await engine.walkScript() }
     }
