@@ -218,8 +218,20 @@ final class ScanEngine {
     }
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
-    /// The spot check (`ScanEngine+Confirm.swift`).
-    var spotConfirm = SpotConfirmState()
+    /// The spot check (`ScanEngine+Confirm.swift`). What follows from its records is read from
+    /// them on every change, so recording an answer sets it and a reset clears it:
+    /// `ScanViewState.uncheckedAreaElsewhere`, and the UI tests' answer file
+    /// (`-sampleResultAfterSpotAnswer`), which applies only once this scan has an answer other
+    /// than "It's clear", so a scan after Start over or a new wall starts on the bundled sample.
+    var spotConfirm = SpotConfirmState() {
+        didSet {
+            let elsewhere = spotConfirm.confirmations.leftUnchecked(besides: spotConfirm.shownArea)
+            if state.uncheckedAreaElsewhere != elsewhere { state.uncheckedAreaElsewhere = elsewhere }
+            if let file = options.sampleResultAfterSpotAnswer, let sample = resultClient as? SampleResultClient {
+                sample.answerFile = spotConfirm.confirmations.records.contains { !$0.answer.keepsClaims } ? file : nil
+            }
+        }
+    }
     /// When each mark was made, on the capture clock (`MarkKey`).
     var markTimes: [String: Double] = [:]
     /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
@@ -1737,6 +1749,7 @@ final class ScanEngine {
         state.spotCheck = nil
         spotConfirm.pending = nil
         spotConfirm.request = nil
+        spotConfirm.shownArea = nil
         // A spot photo still loading for this answer (`presentAnswer`) must not open its check
         // once a retry brings back an equal answer.
         spotConfirm.asked += 1
@@ -2149,8 +2162,9 @@ final class ScanEngine {
         // A request raised while the phone has lost its place could only time out: show the result.
         guard !automaticGapsStopped, !state.tracking.hasLostItsPlace, let map = coverage else { return [] }
         let asked = automaticGaps + (asking.map { [$0] } ?? [])
-        // A new view cannot settle an area the homeowner has already said is obstructed.
-        // Filter before the request limit so refused areas do not consume the remaining slots.
+        // A new view cannot settle an area the homeowner has already said is obstructed, or
+        // couldn't check. Filter before the request limit so those areas do not consume the
+        // remaining slots.
         let capturable = result.missingEvidence.filter { item in
             gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds)
                 .map { captureCanSettle($0) } ?? false

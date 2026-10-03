@@ -106,6 +106,10 @@ final class SampleResultClient: ResultClient {
     let isSample = true
     /// Seconds the fake upload takes, so each upload state is visible in demos and UI tests.
     let pace: Double
+    /// A server answer in a JSON file that replaces the bundled sample while it is set. Only the
+    /// engine sets it, from `-sampleResultAfterSpotAnswer` and the scan's spot answers
+    /// (`ScanEngine.spotConfirm`), for UI tests.
+    var answerFile: URL?
 
     init(pace: Double) {
         self.pace = pace
@@ -117,6 +121,7 @@ final class SampleResultClient: ResultClient {
             progress(Double(step) / 4)
         }
         try await Task.sleep(for: .seconds(pace))
+        if let answerFile { return try Data(contentsOf: answerFile) }
         guard let url = Bundle.main.url(forResource: "SampleResult", withExtension: "json") else { throw MissingSampleResult() }
         return try Data(contentsOf: url)
     }
