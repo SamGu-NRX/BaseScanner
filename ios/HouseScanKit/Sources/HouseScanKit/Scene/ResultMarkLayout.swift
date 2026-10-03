@@ -1,9 +1,9 @@
 import Foundation
 
 // Where the result's marks go, shared by the result card's 3D model (`ResultScene3D`) and the AR
-// view (`ResultARModel`, `BatteryOverlay`): which spot the camera faces, how the clearance zones
-// stack, where a footprint outline sits above them and how it is dashed. Display only; nothing
-// here changes where the server put the spot or what it decided.
+// view (`ResultARModel`, `BatteryOverlay`): which spot the camera faces, what floor the sweep's
+// clearance zones cover and how they stack, where a footprint outline sits above them and how it
+// is dashed. Display only; nothing here changes where the server put the spot or what it decided.
 
 public enum ResultMarkLayout {
     /// What stands at the spot. Only a clean fit (`ResultReading.spotIsClean`) gets a battery; a
@@ -33,6 +33,41 @@ public enum ResultMarkLayout {
     public static func focusS(spot: ClosedRange<Float>?, nearest: ClosedRange<Float>?) -> Float {
         guard let span = spot ?? nearest else { return 0 }
         return (span.lowerBound + span.upperBound) / 2
+    }
+
+    /// A battery's footprint size, meters: along the wall and out from it.
+    public struct BatterySize: Equatable, Sendable {
+        public var width: Float
+        public var depth: Float
+
+        public init(width: Float, depth: Float) {
+            self.width = width
+            self.depth = depth
+        }
+    }
+
+    /// The floor a sweep run covers, meters: along the wall and out from it.
+    public struct SweepZone: Equatable, Sendable {
+        public var span: ClosedRange<Float>
+        public var depth: Float
+
+        public init(span: ClosedRange<Float>, depth: Float) {
+            self.span = span
+            self.depth = depth
+        }
+    }
+
+    /// One zone per sweep run, in order, or none. `starts` are each run's `start_ft` in meters of
+    /// s: a range of battery LEFT edges, so the floor it describes reaches one battery width past
+    /// the larger start and one battery deep. The answer sizes a battery only on `spot` and
+    /// `nearest_considered` (result.schema.json), so `battery` is the size of one of those. With
+    /// neither there is no zone at all: the starts alone are not a footprint, and drawing them
+    /// with a made-up width and depth showed floor the server never sized.
+    public static func sweepZones(starts: [SIMD2<Float>], battery: BatterySize?) -> [SweepZone] {
+        guard let battery else { return [] }
+        return starts.map { start in
+            SweepZone(span: min(start.x, start.y)...(max(start.x, start.y) + battery.width), depth: battery.depth)
+        }
     }
 
     /// How far apart stacked clearance zones sit, in meters, so overlapping ones don't flicker.

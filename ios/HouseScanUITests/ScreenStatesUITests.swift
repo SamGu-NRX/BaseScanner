@@ -215,8 +215,9 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 5))
     }
 
-    /// A failed upload says the app can't reopen the scan after it closes, and with the scan
-    /// packaged it points to Share scan. The note, Try again and Share scan are all reachable.
+    /// A failed upload says to keep the scan open to try again, and with the scan packaged that
+    /// Saved scans can still share its file after the app closes. The note, Try again and Share
+    /// scan are all reachable.
     @MainActor
     func testOfflineRecoveryActions() throws {
         try checkOfflineRecovery(textSize: [], name: "offline-recovery-polish")
@@ -240,9 +241,8 @@ final class ScreenStatesUITests: XCTestCase {
         let note = element(app, "upload.recoveryLimit")
         for _ in 0..<8 where !note.isHittable { scroll.swipeUp(velocity: .slow) }
         XCTAssertTrue(note.isHittable)
-        // The demo scan is packaged, so the note names the export.
-        XCTAssertTrue(note.label.contains("use Share scan to save a copy"), note.label)
-        XCTAssertTrue(note.label.contains("can't reopen it after you close the app"), note.label)
+        // The demo scan is packaged, so the note points to Saved scans for after the app closes.
+        XCTAssertTrue(note.label.contains("If you close the app, you can still share its saved file from Saved scans on the first screen."), note.label)
         let retry = app.buttons["action.retryUpload"]
         for _ in 0..<8 where !retry.isHittable { scroll.swipeUp(velocity: .slow) }
         XCTAssertTrue(retry.isHittable)
@@ -1156,6 +1156,10 @@ final class ScreenStatesUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "uploading", "-uiDemoRejected"]
         app.launch()
+        // The sheet must not outlive this test: left open, it stayed over the next test's launch
+        // for about 16 s and that test never found its button (run 37121918073). Terminating waits
+        // until the app, and with it the sheet, is gone.
+        defer { app.terminate() }
         tap(app, "action.shareScan")
         let sheet = app.otherElements["ActivityListView"]
         let found = sheet.waitForExistence(timeout: 10)
@@ -1167,6 +1171,9 @@ final class ScreenStatesUITests: XCTestCase {
             add(XCTAttachment(string: app.debugDescription))
         }
         XCTAssertTrue(found, "the share sheet never appeared")
+        // Close it the way a person would before the app goes.
+        sheet.swipeDown()
+        _ = sheet.waitForNonExistence(timeout: 5)
     }
 
     @MainActor

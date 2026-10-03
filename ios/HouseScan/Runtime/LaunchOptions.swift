@@ -22,12 +22,25 @@ import OSLog
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 /// - `-autopilotSomethingThere`: the autopilot answers the first spot check "Something's there"
 ///   instead of "It's clear", so the scan is checked again without that area.
+/// - `-autopilotCannotCheck`: the autopilot answers the first spot check "I can't check this
+///   area" instead of "It's clear". It can't be combined with `-autopilotSomethingThere`.
+/// - `-sampleResultAfterSpotAnswer <path>` (debug builds only): with the bundled sample, the
+///   upload sent after a spot check answered "Something's there" or "I can't check this area",
+///   and every later upload of that scan, is answered with the server answer in this JSON file,
+///   such as one without a spot. Start over or a new wall goes back to the bundled sample.
 /// - `-injectGroundRise <meters>`: with `-replay`, `-autopilot` and `-autopilotGate`, once the
 ///   first upload starts, each time a file named `inject-ground` appears in the gate folder the
 ///   app deletes it and hands the engine a detected floor that many meters above its current
 ///   ground, as ARKit refining the ground would (`ScanEngine.injectGroundForTest`). Replays carry
 ///   no plane evidence, so this is the only way a UI test reaches that path. Meters must be over
 ///   the engine's 1 cm refine threshold and at most `GroundPlaneChoice.maximumRaise`.
+/// - `-answersFromGate`: with `-autopilotGate` and a server URL, uploads go through the gate
+///   folder instead of the network: the UI test reads each request there and writes the server's
+///   answer (`GateAnswerProtocol`).
+/// - `-failCloseUpSave`: with `-replay`, every meter close-up's photo fails to save, as on a phone
+///   with no space left, so a UI test reaches the save-failure retake and the skip after it. The
+///   photo is dropped before `KeyframeStore.saveStill`, which then takes its own failure path.
+///   The retake reason stays up 10 s instead of 2, so the test's query can't miss it.
 /// - `-simulateAppStore`: run as an App Store install would, so the developer options and practice
 ///   meter are unavailable whatever the stored switch says (`DeveloperSettings`). It can only take
 ///   the switch away, never offer it.
@@ -40,8 +53,12 @@ struct LaunchOptions: Equatable {
     var autopilotGate: URL?
     var autopilotCantGetThere = false
     var autopilotSomethingThere = false
+    var autopilotCannotCheck = false
+    var sampleResultAfterSpotAnswer: URL?
     var simulateAppStore = false
     var injectGroundRise: Float?
+    var answersFromGate = false
+    var failCloseUpSave = false
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -57,11 +74,21 @@ struct LaunchOptions: Equatable {
         autopilot = arguments.contains("-autopilot")
         autopilotCantGetThere = arguments.contains("-autopilotCantGetThere")
         autopilotSomethingThere = arguments.contains("-autopilotSomethingThere")
+        autopilotCannotCheck = arguments.contains("-autopilotCannotCheck")
+        precondition(!(autopilotSomethingThere && autopilotCannotCheck), "-autopilotSomethingThere and -autopilotCannotCheck each choose the first spot answer; pass one")
+        #if DEBUG
+        sampleResultAfterSpotAnswer = value(after: "-sampleResultAfterSpotAnswer").map { URL(fileURLWithPath: $0) }
+        #endif
         simulateAppStore = arguments.contains("-simulateAppStore")
+        failCloseUpSave = arguments.contains("-failCloseUpSave")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
+        answersFromGate = arguments.contains("-answersFromGate")
+        if answersFromGate, autopilotGate == nil || serverURL == nil {
+            preconditionFailure("-answersFromGate needs -autopilotGate and a server URL (-serverURL or the build's)")
+        }
         if let text = value(after: "-injectGroundRise") {
             guard let meters = Float(text), meters > 0.01, meters <= 0.1 else {
                 preconditionFailure("-injectGroundRise takes meters over 0.01 and at most 0.1, got \(text)")

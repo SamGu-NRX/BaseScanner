@@ -1,10 +1,11 @@
 import Foundation
 
-/// Why sending the scene failed, which decides whether sending it again can help.
+/// Why sending the scene failed, which decides what the homeowner can do next.
 ///
 /// A network failure, a server error (5xx) or a server that is busy or timed out (408, 429) may
-/// go away, so the homeowner can try again. Any other refusal (4xx) or an answer that doesn't
-/// decode would come back the same for the same scene, so the way on is back to the review or
+/// go away, so the homeowner can try again. So can an answer House Scan couldn't use: the problem
+/// is in the answer, not the scan, and asking again may get a usable one. A refusal (4xx) is the
+/// server saying this scene can't be checked as it is, so the way on is back to the review or
 /// starting over.
 public enum UploadFailureKind: Sendable, Equatable {
     /// No connection at all.
@@ -19,14 +20,16 @@ public enum UploadFailureKind: Sendable, Equatable {
     case busy(retryAfter: Int?)
     /// The server answered 4xx: it refused this scene.
     case refused
-    /// The answer wasn't HTTP or didn't decode as a result.
+    /// The server answered, but House Scan can't use the answer: a 2xx that doesn't decode as a
+    /// result or doesn't name the scene sent (`ResultBinding`), or a status outside 2xx–5xx.
     case unreadableAnswer
 
-    /// Sending the same scene again can succeed.
+    /// The homeowner may send the same scene again: it can succeed. The app never does it on its
+    /// own; it offers "Try again".
     public var retryable: Bool {
         switch self {
-        case .offline, .unreachable, .serverError, .busy: true
-        case .refused, .unreadableAnswer: false
+        case .offline, .unreachable, .serverError, .busy, .unreadableAnswer: true
+        case .refused: false
         }
     }
 
@@ -34,7 +37,15 @@ public enum UploadFailureKind: Sendable, Equatable {
         if let urlError = error as? URLError {
             return offlineCodes.contains(urlError.code) ? .offline : .unreachable
         }
-        return .unreadableAnswer
+        switch error as? PlacementHTTPError {
+        case .server(let status, _, let retryAfter)?:
+            return classify(httpStatus: status, retryAfter: retryAfter)
+        case .notHTTP?:
+            // No server answered, so nothing was refused or unreadable.
+            return .unreachable
+        case nil:
+            return .unreadableAnswer
+        }
     }
 
     /// The kind for an HTTP status outside 200...299. `retryAfter` is the answer's Retry-After

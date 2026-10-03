@@ -178,9 +178,9 @@ public struct CoverageConfig: Sendable, Equatable {
 /// homeowner confirms the chosen spot before the result is shown: the spot check (`SpotPhoto`,
 /// `SpotConfirmations`; the app's `ScanEngine+Confirm.swift`) shows a kept photo of the spot and
 /// its clearance area and asks whether anything stands in front of the wall or on the ground
-/// there. "It's clear" backs the claims over that area. "Something's there" withdraws them
-/// (`withdrawClaims(over:)`): the area's wall, ground and walked-path claims export as unseen and
-/// the scan is checked again. Claims away from the chosen spot are not confirmed; they decide only
+/// there. "It's clear" backs the claims over that area. "Something's there" and "I can't check
+/// this area" withdraw them (`withdrawClaims(over:)`): the area's wall, ground and walked-path
+/// claims export as unseen and the scan is checked again. Claims away from the chosen spot are not confirmed; they decide only
 /// where the server looks for a spot, and any spot it chooses is checked in turn.
 public struct CoverageMap: Sendable {
     public private(set) var wall: WallFrame
@@ -1338,8 +1338,9 @@ public struct CoverageMap: Sendable {
     /// ground, near band and depth rows alike, and the walked-path clearance. The cells read
     /// `.skipped` in both bands, and the export reports none of them (`wallSeenSpans`,
     /// `groundDepthSpans`, `facingSpans`), so the server treats the stretch as unseen. For the
-    /// homeowner's "Something's there" in the spot check: the camera-only and walked-path claims
-    /// there were wrong (see the type's "Bounded exceptions").
+    /// homeowner's "Something's there" in the spot check, where the camera-only and walked-path
+    /// claims were wrong, and "I can't check this area", where nothing backs them (see the type's
+    /// "Bounded exceptions").
     ///
     /// It lasts for the scan, through rebuilds, and later views add nothing there: a photo taken
     /// without depth would claim the same stretch past the same obstruction. Overhead views are

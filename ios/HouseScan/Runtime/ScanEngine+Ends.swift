@@ -67,10 +67,8 @@ extension ScanEngine {
         let s: Float
         var seen: ClosedRange<Float>?
         if offer.atReticle {
-            // `markWallEnd` with no point: the middle of the view, which is the sensor image's
-            // middle whatever the view's size.
-            guard frame.tracking == .normal,
-                  let hit = nearbyWallHit(frame.camera.ray(throughPixel: frame.camera.imageSize / 2), camera: frame.camera, wall: map.wall) else { return nil }
+            // Where the button would put it: nothing when the button would refuse (`circleEnd`).
+            guard case .success(let hit) = circleEnd(asked: offer.side, frame: frame, map: map) else { return nil }
             side = hit.s < 0 ? .left : .right
             s = hit.s
         } else {
@@ -100,10 +98,33 @@ extension ScanEngine {
         return EndPreview(side: side, s: s, atReticle: offer.atReticle, leavesOutWalked: leavesOut, leavesOutSeen: isSeen)
     }
 
+    /// Where "Wall ends here" at the circle puts the end the card asks for on `asked`, or why it
+    /// can't (`EndAim`, B-06). The circle is the middle of the view, which is the sensor image's
+    /// middle whatever the view's size. Shared by the button and its preview, so the tape never
+    /// shows an end the button would refuse. Only normal tracking counts, as for feature marks.
+    func circleEnd(asked: WallSide, frame: SourceFrame, map: CoverageMap) -> Result<WallPoint, EndMarkRefusal> {
+        let hit = map.wall.intersectWall(frame.camera.ray(throughPixel: frame.camera.imageSize / 2))
+        switch EndAim.verdict(
+            hit: hit, camera: frame.camera.position, wall: map.wall, reach: map.config.maxDistance,
+            groundError: map.heightError, askedLeft: asked == .left, trackingNormal: frame.tracking == .normal
+        ) {
+        case .end(let point): return .success(point)
+        case .trackingLimited: return .failure(.trackingNotReady)
+        case .offWall: return .failure(.noWall)
+        case .otherSide: return .failure(.otherSide(asked == .left ? .right : .left))
+        }
+    }
+
     /// Republishes the end preview; called with every guidance update, since the phone moves.
     func publishEndPreview() {
         let preview = currentEndPreview()
         if preview != state.endPreview { state.endPreview = preview }
+        // A refusal stands until the circle is on the end the card asks for, or the card moves on.
+        if state.endMarkRefusal != nil {
+            var fixed = true
+            if case .markEnd(let side) = state.guidance { fixed = preview?.atReticle == true && preview?.side == side }
+            if fixed { state.endMarkRefusal = nil }
+        }
     }
 
     func endWallHere() {
@@ -126,11 +147,12 @@ extension ScanEngine {
     /// "Can't get there" while the walk asks to walk `side` or to mark its end: the end goes where
     /// the preview showed, as an unexplored end. `walkRefusals` notes when, and whether the side
     /// had been walked (#82, #76).
-    func endWalkCannotGoOn(_ side: WallSide) {
+    func endWalkCannotGoOn(_ side: WallSide, refused: Bool = true) {
         guard let s = walkedEnd(side), let map = coverage else { return }
-        logEnd("can't get there", side: side, at: s)
+        logEnd(refused ? "can't get there" : "the wall keeps going", side: side, at: s)
         let walked = map.walkedFarthest(side.walk)
         setEnd(side, at: s, kind: .unexplored)
+        guard refused else { return }
         walkRefusals.ended(side.walk, at: s, walked: walked, time: ScanEngine.refusalClock)
         if walkRefusals.wasRefused(side.walk, end: s) {
             RuntimeLog.engine.info("the \(side.rawValue, privacy: .public) side ended before it was walked (\(walked) m walked, end at s=\(s))")

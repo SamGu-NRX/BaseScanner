@@ -443,6 +443,9 @@ enum CloseUpProblem: Equatable, Sendable {
     case numberTooSmall
     /// No number could be read at all: retake.
     case noNumber
+    /// The photo couldn't be written to the phone, or read back once written. Nothing about the
+    /// shot was wrong, so the words don't blame the homeowner's hands (B-20).
+    case photoNotSaved
 }
 
 /// One reading of the meter number from the close-up, for the homeowner to confirm.
@@ -553,6 +556,19 @@ enum NextWallRefusal: Equatable, Sendable {
     case notAtCorner
 }
 
+/// Why "Wall ends here" at the circle marked no end (`ScanViewState.endMarkRefusal`). Before,
+/// the button did nothing at all in each case, and nothing said why (B-06).
+enum EndMarkRefusal: Error, Equatable, Sendable {
+    /// The circle isn't on the wall: aimed at the ground, so the ray meets the wall's plane under
+    /// the floor, or past the distance a camera's view counts for (`CoverageConfig.maxDistance`)
+    /// far down a long wall. Aimed above the wall is kept (`EndAim`).
+    case noWall
+    /// The circle is on the wall on this side of the meter, not the side the card asks about.
+    case otherSide(WallSide)
+    /// Tracking isn't normal, as for a feature mark (`MarkRefusal.trackingNotReady`).
+    case trackingNotReady
+}
+
 enum MarkRefusal: Equatable, Sendable {
     case noSurface
     case wrongSide
@@ -627,10 +643,14 @@ enum UploadState: Equatable, Sendable {
     /// A network failure or a server error (5xx): sending again can work. `offline` means no
     /// connection at all.
     case failed(message: String, offline: Bool)
-    /// The server refused the scan (4xx), its answer couldn't be read, or the scan couldn't be
-    /// packaged. Sending again would send the same thing, so the way on is back to the review
-    /// or start over, never "Try again".
+    /// The server refused the scan (4xx) or the scan couldn't be packaged. Sending again would send
+    /// the same thing, so the way on is back to the review or start over, never "Try again".
     case rejected(message: String)
+    /// The server answered, but House Scan couldn't use the answer: it didn't decode, or it didn't
+    /// name the scene sent. It isn't shown. The scan isn't at fault, so the way on is "Try again",
+    /// with sharing the scan or starting over for when asking again doesn't help. `attempts` counts
+    /// such answers since the scan was sent from the review or a gap, at least 1.
+    case unusableAnswer(attempts: Int)
     case done
 }
 
@@ -665,6 +685,13 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var plusMinus: Float? = nil
     /// Whether `threshold` is a minimum or a maximum, when the server said which.
     var comparison: RuleComparison? = nil
+    /// A stricter line inside `threshold`, meters, when the server sent one (`review_threshold_ft`,
+    /// on the cable run): a measurement that doesn't clear it needs review even within the limit.
+    /// Nil when the answer has none.
+    var reviewThreshold: Float? = nil
+    /// True when `reviewThreshold` explains this unsure check, so the card names it
+    /// (`PlacementCheck.reviewBandApplies`, decided in the server's feet before conversion).
+    var reviewBandApplies = false
     /// The `MissingEvidence.id` of the first view that would settle this check, when the server
     /// named one.
     var settledBy: String? = nil
@@ -759,6 +786,10 @@ enum SpotCheckAnswer: Equatable, Sendable {
     case clear
     /// Something stands there: the scan stops claiming that area and is checked again.
     case somethingThere
+    /// The homeowner can't see or reach the area to say: it was not observed, which is neither
+    /// an obstruction nor clear. The scan stops claiming that area and is checked again, and the
+    /// result says nobody checked it.
+    case cannotCheck
 }
 
 /// The one question asked before an answer's spot is shown as the result: is anything standing
@@ -867,6 +898,10 @@ final class ScanViewState {
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
     var endPreview: EndPreview?
+    /// Why the last "Wall ends here" at the circle marked nothing, while the walk still asks for
+    /// that end. Cleared once the circle is on the asked end (`EndPreview` at the reticle on that
+    /// side), when an end is set, or when the walk asks for something else.
+    var endMarkRefusal: EndMarkRefusal?
     /// "Can't get there" came again on a walk card within `WalkRefusals.repeatWindow` of the one
     /// that last ended a side: the walk asks "End the scan here?" instead of ending this side too
     /// (#82). Answered by `answerEndScan`.
@@ -891,6 +926,11 @@ final class ScanViewState {
     var result: ResultPresentation?
     /// The homeowner's check of the proposed spot, retained beside the result.
     var spotCheck: SpotCheck?
+    /// True when the homeowner answered "I can't check this area" about an area other than the
+    /// spot the result names, or while it names none. That area stays out of the scan, so the
+    /// result says so beside whatever it says about its own spot. Cleared with the scan's spot
+    /// checks.
+    var uncheckedAreaElsewhere = false
     /// True while the engine sees the AR scene drawing the result in the live camera
     /// (`ResultOverlayPolicy`). The AR screen then draws no overlay of its own; otherwise it
     /// draws `BatteryOverlay`.
@@ -995,8 +1035,8 @@ protocol ScanActions: AnyObject {
     func retryUpload()
     /// After a rejected upload: back to the feature review, keeping the scan.
     func backToReview()
-    /// The answer to `ScanViewState.spotCheck`: true when nothing stands in the area.
-    func answerSpotCheck(clear: Bool)
+    /// The answer to `ScanViewState.spotCheck`.
+    func answerSpotCheck(_ answer: SpotCheckAnswer)
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
     func showAR()

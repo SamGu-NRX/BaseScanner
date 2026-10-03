@@ -192,6 +192,9 @@ final class ScanEngine {
     private var uploadTask: Task<Void, Never>?
     /// The current upload's scene has fixed its ground; keep this true through answer pacing.
     private var scenePackaged = false
+    /// The server's answers House Scan couldn't use since this scan was last sent from the review
+    /// or a gap; "Try again" keeps counting, and a usable answer starts again at 0.
+    private var unusableAnswers = 0
     private(set) var placement: PlacementResult?
     /// Whether a ground change took the answer down and no answer has been shown since
     /// (`answerAfter(_:)`).
@@ -215,8 +218,20 @@ final class ScanEngine {
     }
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
-    /// The spot check (`ScanEngine+Confirm.swift`).
-    var spotConfirm = SpotConfirmState()
+    /// The spot check (`ScanEngine+Confirm.swift`). What follows from its records is read from
+    /// them on every change, so recording an answer sets it and a reset clears it:
+    /// `ScanViewState.uncheckedAreaElsewhere`, and the UI tests' answer file
+    /// (`-sampleResultAfterSpotAnswer`), which applies only once this scan has an answer other
+    /// than "It's clear", so a scan after Start over or a new wall starts on the bundled sample.
+    var spotConfirm = SpotConfirmState() {
+        didSet {
+            let elsewhere = spotConfirm.confirmations.leftUnchecked(besides: spotConfirm.shownArea)
+            if state.uncheckedAreaElsewhere != elsewhere { state.uncheckedAreaElsewhere = elsewhere }
+            if let file = options.sampleResultAfterSpotAnswer, let sample = resultClient as? SampleResultClient {
+                sample.answerFile = spotConfirm.confirmations.records.contains { !$0.answer.keepsClaims } ? file : nil
+            }
+        }
+    }
     /// When each mark was made, on the capture clock (`MarkKey`).
     var markTimes: [String: Double] = [:]
     /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
@@ -243,7 +258,7 @@ final class ScanEngine {
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
         if let url = options.serverURL, !options.sampleResult {
-            resultClient = HTTPResultClient(serverURL: url)
+            resultClient = HTTPResultClient(serverURL: url, session: options.answersFromGate ? GateAnswerProtocol.session : .shared)
         } else {
             resultClient = SampleResultClient(pace: options.autopilot ? options.autopilotHold : 1.2)
         }
@@ -514,7 +529,7 @@ final class ScanEngine {
         case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest: true
         case .uploading:
             switch state.upload {
-            case .failed, .rejected: false
+            case .failed, .rejected, .unusableAnswer: false
             case .idle, .packaging, .uploading, .analyzing, .done: true
             }
         case .onboarding, .spotConfirm, .result, .resultAR, .unsupported: false
@@ -756,7 +771,7 @@ final class ScanEngine {
         state.coaching = coaching(for: frame.tracking, skip: nil)
         // After a retake request the shutter waits long enough for the reason to be read (and,
         // for "move closer", acted on) before the hold can start again.
-        if let retake = closeUpRetake, screenTime - retake.since < Self.retakeNotice {
+        if let retake = closeUpRetake, screenTime - retake.since < currentRetakeNotice {
             state.closeUp = .aiming(hold: 0, problem: retake.problem)
             return
         }
@@ -786,6 +801,10 @@ final class ScanEngine {
     /// Seconds a retake reason stays up before the next close-up can be taken. A guess to try
     /// on a phone, not measured: long enough to read one short line.
     private static let retakeNotice: Double = 2
+    /// Under `-failCloseUpSave` the reason stays up 10 s, so the UI test's query can't miss it:
+    /// the replay is close to the meter for under a second, and after the 2 s notice the gate's
+    /// "Move closer" replaces it.
+    private var currentRetakeNotice: Double { options.failCloseUpSave && replay != nil ? 10 : Self.retakeNotice }
 
     private var screenTime: Double { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000 }
 
@@ -827,42 +846,55 @@ final class ScanEngine {
         Task {
             // The task can start after a reset or after the flow left the close-up.
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            let photo = await closeUpPhoto(frame)
+            var photo = await closeUpPhoto(frame)
+            if options.failCloseUpSave, replay != nil { photo.jpeg = .none }
             // Drawing a practice photo suspends: a reset meanwhile must not save into the new scan.
             guard scan == generation, state.phase == .meterCloseUp else { return }
             let saved = await store.saveStill(photo, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            if !saved {
-                retakeCloseUp(.blurry)
+            switch saved {
+            case .saved:
+                break
+            case .notWritten:
+                retakeCloseUp(.photoNotSaved)
+                return
+            case .worldDiscarded:
+                // The discard sent the flow back to finding the meter, so the phase guard above
+                // returns first. Past it, the meter was found again while this file was written:
+                // the shot belongs to the old frame, and the new close-up is left to take its own.
+                RuntimeLog.engine.info("close-up from a discarded world frame dropped")
                 return
             }
-            let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
+            // Read back once, before the capture is acknowledged: the thumbnail and the meter
+            // reader both use these bytes, and a photo that can't be read back wasn't kept.
+            let file = store.directory.appending(path: "meter_close.jpg")
+            let readBack = await Task.detached(priority: .userInitiated) { () -> (jpeg: Data, thumbnail: CGImage?)? in
+                guard let jpeg = try? Data(contentsOf: file) else { return nil }
+                return (jpeg, ImageWork.uprightThumbnail(jpeg: jpeg))
+            }.value
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            state.closeUp = .captured(thumbnail)
+            guard let readBack else {
+                RuntimeLog.engine.error("close-up photo could not be read back")
+                closeUpCredit.photoChecked(view, passed: false)
+                retakeCloseUp(.photoNotSaved)
+                return
+            }
+            state.closeUp = .captured(readBack.thumbnail)
             state.captureCount += 1
-            state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: thumbnail)
-            await readMeterNumber(scan: scan, view: view)
+            state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: readBack.thumbnail)
+            await readMeterNumber(readBack.jpeg, scan: scan, view: view)
         }
     }
 
-    /// Reads the meter number from the saved close-up, off the main actor, then offers the
-    /// candidates for the homeowner to pick from (never filling one in) or asks for a retake.
+    /// Reads the meter number from the saved close-up's bytes, off the main actor, then offers
+    /// the candidates for the homeowner to pick from (never filling one in) or asks for a retake.
     /// `view` is the shot's, which coverage may take once the reader has passed its photo.
-    private func readMeterNumber(scan: Int, view: CloseUpView?) async {
+    private func readMeterNumber(_ jpeg: Data, scan: Int, view: CloseUpView?) async {
         state.meterNumber = .reading
         let reader = MeterNumberReaders.make()
-        let photo = store.directory.appending(path: "meter_close.jpg")
-        let readout = await Task.detached(priority: .userInitiated) { () -> MeterReadout? in
-            guard let jpeg = try? Data(contentsOf: photo) else { return nil }
-            return await reader.read(jpeg: jpeg)
-        }.value
+        let readout = await Task.detached(priority: .userInitiated) { await reader.read(jpeg: jpeg) }.value
         guard scan == generation, state.phase == .meterCloseUp, state.meterNumber == .reading else { return }
-        closeUpCredit.photoChecked(view, passed: readout?.photoPassedChecks == true)
-        guard let readout else {
-            RuntimeLog.engine.error("close-up photo could not be read back for the meter number")
-            retakeCloseUp(.noNumber)
-            return
-        }
+        closeUpCredit.photoChecked(view, passed: readout.photoPassedChecks)
         guard !readout.candidates.isEmpty else {
             retakeCloseUp(readout.retake ?? .noNumber)
             return
@@ -1675,7 +1707,7 @@ final class ScanEngine {
         let screen: GroundFreshness.Screen = switch state.phase {
         case .uploading:
             switch state.upload {
-            case .failed, .rejected: .stopped
+            case .failed, .rejected, .unusableAnswer: .stopped
             case .idle, .packaging, .uploading, .analyzing, .done: .sending
             }
         case .spotConfirm: .spotCheck
@@ -1717,6 +1749,7 @@ final class ScanEngine {
         state.spotCheck = nil
         spotConfirm.pending = nil
         spotConfirm.request = nil
+        spotConfirm.shownArea = nil
         // A spot photo still loading for this answer (`presentAnswer`) must not open its check
         // once a retry brings back an equal answer.
         spotConfirm.asked += 1
@@ -1844,6 +1877,7 @@ final class ScanEngine {
         coverage = map
         endKinds[side] = kind
         state.wallTooShort = false
+        state.endMarkRefusal = nil
         publishWall()
         publishCoverage()
         RuntimeLog.engine.info("end \(side.rawValue, privacy: .public) at s=\(s) (\(kind == .limit ? "limit" : "unexplored", privacy: .public))")
@@ -1999,6 +2033,8 @@ final class ScanEngine {
 
     func startUpload() {
         scenePackaged = false
+        // "Try again" sends from the upload screen; anything else is a new send of this scan.
+        if state.phase != .uploading { unusableAnswers = 0 }
         go(.uploading)
         injectGroundForTest()
         uploadTask?.cancel()
@@ -2080,6 +2116,7 @@ final class ScanEngine {
                 guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
             }
             placement = result
+            unusableAnswers = 0
             noteExchange(scene: scene, answer: data, packet: packaged.packet)
             writeScanStamp(answer: result)
             state.result = presentation(of: result, isSample: resultClient.isSample)
@@ -2111,7 +2148,7 @@ final class ScanEngine {
             // failure the canceller already shows.
             guard scan == generation, !Task.isCancelled else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
-            state.upload = UploadFailure.state(for: error)
+            state.upload = UploadFailure.state(for: error, sample: resultClient.isSample, unusableAnswers: &unusableAnswers)
             updateRecording()
         }
     }
@@ -2125,8 +2162,9 @@ final class ScanEngine {
         // A request raised while the phone has lost its place could only time out: show the result.
         guard !automaticGapsStopped, !state.tracking.hasLostItsPlace, let map = coverage else { return [] }
         let asked = automaticGaps + (asking.map { [$0] } ?? [])
-        // A new view cannot settle an area the homeowner has already said is obstructed.
-        // Filter before the request limit so refused areas do not consume the remaining slots.
+        // A new view cannot settle an area the homeowner has already said is obstructed, or
+        // couldn't check. Filter before the request limit so those areas do not consume the
+        // remaining slots.
         let capturable = result.missingEvidence.filter { item in
             gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds)
                 .map { captureCanSettle($0) } ?? false

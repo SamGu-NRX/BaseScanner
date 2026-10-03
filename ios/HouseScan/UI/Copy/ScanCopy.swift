@@ -71,7 +71,7 @@ enum ScanCopy {
         case .markEnd(let side):
             Instruction(
                 title: "Is this the \(side.rawValue) end of the wall?",
-                detail: "Aim where the wall stops or turns a corner, and tap Wall ends here."
+                detail: "Aim where it stops or turns a corner and tap Wall ends here. If it goes on, tap The wall keeps going."
             )
         case .aimAtGround(let s):
             // A cell counts once seen from two places at least 0.25 m apart (`coveringBaseline`),
@@ -145,7 +145,9 @@ enum ScanCopy {
 
     // MARK: Coaching
 
-    static func coaching(_ coaching: Coaching) -> Instruction {
+    /// `meterPhoto` says whether the screen shows the meter close-up beside the card
+    /// (`SavedMeterPhoto`): only then can it say "like this" (B-23).
+    static func coaching(_ coaching: Coaching, meterPhoto: Bool = false) -> Instruction {
         switch coaching {
         case .initializing:
             Instruction(title: "Move your phone slowly", detail: "It's getting its bearings.")
@@ -162,7 +164,9 @@ enum ScanCopy {
         case .turnSlowly:
             Instruction(title: "Turn more slowly", detail: "Photos taken while turning come out blurred.")
         case .relocalizing:
-            Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
+            meterPhoto
+                ? Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
+                : Instruction(title: "Point back at your meter", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
             Instruction(title: "Your phone lost its place", detail: "Aim back at your meter and move slowly.")
         case .pastWallEnd:
@@ -260,6 +264,7 @@ enum ScanCopy {
         case .tracking: "Move slowly"
         case .numberTooSmall: "Move closer so the number looks bigger"
         case .noNumber: "Couldn't read the number. Hold still for another photo."
+        case .photoNotSaved: "Your phone couldn't save that photo. Hold on the meter to try again."
         }
     }
 
@@ -361,7 +366,9 @@ enum ScanCopy {
     static func refusal(_ refusal: MarkRefusal) -> String {
         switch refusal {
         case .noSurface: "Nothing to pin there. Aim at the wall or the ground and try again."
-        case .wrongSide: "That spot is behind the wall. Tap something on this side."
+        // The check is on the phone, not the tap: from behind the wall's line no tap can land
+        // (B-27), so the words say where to stand.
+        case .wrongSide: "Your phone is behind the wall's line. Step out in front of the wall, then try again."
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
         }
@@ -379,6 +386,20 @@ enum ScanCopy {
     }
 
     /// A refused mark of the next wall: what went wrong, then what to do.
+    static let wallKeepsGoing = "The wall keeps going"
+
+    /// Why "Wall ends here" marked nothing, and what to do instead (`EndMarkRefusal`).
+    static func endMarkRefusal(_ refusal: EndMarkRefusal, asked side: WallSide) -> Instruction {
+        switch refusal {
+        case .noWall:
+            Instruction(title: "The circle isn't on the wall", detail: "Aim it at the wall where it stops or turns, then tap Wall ends here.")
+        case .otherSide(let landed):
+            Instruction(title: "That's the \(landed.rawValue) side of your meter", detail: "Turn to the \(side.rawValue) end, then tap Wall ends here.")
+        case .trackingNotReady:
+            Instruction(title: "One moment, your phone is still finding its place", detail: "Then aim at the \(side.rawValue) end.")
+        }
+    }
+
     static func nextWallRefusal(_ refusal: NextWallRefusal) -> Instruction {
         switch refusal {
         case .noSurface: Instruction(title: "No wall under the circle", detail: "Step closer and aim at the next wall.")
@@ -483,7 +504,11 @@ enum ScanCopy {
     /// what it does on `step`; nil on a step that offers none. On an aim or tilt step the
     /// homeowner is already at the spot and it's the view that can't be had, so "Can't get
     /// there" read as the wrong answer and testers kept tilting (#63). It stays on the steps
-    /// that ask to go somewhere. The wall's end (`markEnd`) has "Wall ends here" instead.
+    /// that ask to go somewhere. The wall's end (`markEnd`) asks whether the wall ends here, so
+    /// its reply is the other answer: the wall goes on. It had none, and a wall running past
+    /// 20 ft had no true answer to "Is this the end of the wall?" (B-06). The end goes where the
+    /// walk reached, unexplored, exactly as "Can't get there" on the walk puts it (`WalkedEnd`):
+    /// the phone's place, but no farther than a little past the last view of the wall.
     static func reply(for step: GuidanceStep) -> (title: String, hint: String)? {
         switch step {
         case .aimAtGround, .aimAtWall:
@@ -496,7 +521,9 @@ enum ScanCopy {
             (title: "Can't get there", hint: "Skips this part of the wall. An installer would need to look at it instead.")
         case .seeBehind:
             (title: cannotSeeBehind, hint: "Skips the part behind it. An installer would need to look at it instead.")
-        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .markEnd, .stepBack, .walkComplete, .gap:
+        case .markEnd:
+            (title: wallKeepsGoing, hint: "Ends this side where your walk reached. An installer would need to look at the wall past it.")
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .stepBack, .walkComplete, .gap:
             nil
         }
     }
@@ -563,7 +590,7 @@ enum ScanCopy {
             switch upload {
             case .idle, .packaging, .uploading, .analyzing:
                 return Instruction(title: "Making a sample result", detail: "No server is connected, so nothing leaves this phone. The result you'll see is an example, not a check of your wall.")
-            case .failed, .rejected, .done:
+            case .failed, .rejected, .unusableAnswer, .done:
                 break
             }
         }
@@ -586,6 +613,13 @@ enum ScanCopy {
         // The engine's message is already in the homeowner's words and says why.
         case .rejected(let message):
             Instruction(title: "We couldn't check this scan", detail: message)
+        // The server did answer; what failed is the answer, so the words never point at the marks.
+        case .unusableAnswer(let attempts) where attempts > 1:
+            Instruction(title: "The answer still couldn't be used", detail: "Asking again might not fix this. It isn't about what you marked.")
+        case .unusableAnswer:
+            Instruction(
+                title: "We couldn't use the server's answer",
+                detail: "The server answered, but House Scan couldn't read the answer or match it to your scan, so it isn't shown. It isn't about what you marked.")
         case .done:
             Instruction(title: "Done", detail: nil)
         }
@@ -635,11 +669,13 @@ enum ScanCopy {
 
     /// The sentence under a failed or unsure line on the result card: the measurement against the
     /// rule, or without a measurement, the server's reason (fail) or who settles it (unsure).
-    static func cardLine(_ row: CheckRow, spoken: Bool = false) -> String? {
+    /// `photoOffered` is whether the line offers the camera for the view that settles it
+    /// (`ResultPresentation.offeredView`).
+    static func cardLine(_ row: CheckRow, photoOffered: Bool, spoken: Bool = false) -> String? {
         switch row.outcome {
         case .pass: nil
         case .fail: measurement(row, spoken: spoken) ?? row.reason
-        case .unsure: measurement(row, spoken: spoken) ?? unsureNote(row)
+        case .unsure: measurement(row, spoken: spoken) ?? unsureNote(photoOffered: photoOffered)
         }
     }
 
@@ -696,27 +732,57 @@ enum ScanCopy {
     /// review was sent: the app only shows the server's answer and contacts nobody.
     static let needsInstaller = "Needs an installer to check"
 
-    static func unsureNote(_ row: CheckRow) -> String {
-        row.needsPerson ? Self.needsInstaller : "One more photo would settle this"
+    static let onePhoto = "One more photo would settle this"
+
+    /// Who settles an unsure check. One more photo only when the app offers the camera for it
+    /// (`ResultPresentation.offeredView`): keyed on the check alone, a view the homeowner
+    /// couldn't get to, or one the app can't plan, still promised a photo nothing would take.
+    static func unsureNote(photoOffered: Bool) -> String {
+        photoOffered ? Self.onePhoto : Self.needsInstaller
     }
 
     /// "Measured 3 ft 2 in. The rule is at least 3 ft, and the measurement can be off by about 4 in."
     /// The limit says whether it is a minimum or a maximum: without it, the 20 ft cable limit read
     /// like a minimum under "Measured 3 ft".
     /// `spoken` spells out feet and inches for VoiceOver, which reads "ft" and "in" as letters.
+    ///
+    /// When the server's review line explains an unsure check (`reviewBand`), the rule names it too:
+    /// "Measured 16 ft. The rule is at most 20 ft, and anything 15 ft or more needs an installer's
+    /// review. The measurement can be off by about 6 in." Without it, a cable run inside the
+    /// maximum read as passing under "Not sure yet". It says what the rule needs, never that a
+    /// review was sent: the app contacts nobody.
     static func measurement(_ row: CheckRow, spoken: Bool = false) -> String? {
         guard let measured = row.measured else { return nil }
         let length = spoken ? Distance.spoken : Distance.feetAndInches
         var parts = [measuredLine(measured, length: length)]
         if let threshold = row.threshold {
             let limit = ruleLimit(threshold, row.comparison, length: length)
-            if let plusMinus = row.plusMinus, plusMinus > 0 {
-                parts.append("The rule is \(limit), and the measurement can be off by about \(length(plusMinus)).")
+            let error = row.plusMinus.flatMap { $0 > 0 ? length($0) : nil }
+            if let band = reviewBand(row, length: length) {
+                parts.append("The rule is \(limit), and \(band) needs an installer's review.")
+                if let error {
+                    parts.append("The measurement can be off by about \(error).")
+                }
+            } else if let error {
+                parts.append("The rule is \(limit), and the measurement can be off by about \(error).")
             } else {
                 parts.append("The rule is \(limit).")
             }
         }
         return parts.joined(separator: " ")
+    }
+
+    /// "anything 15 ft or more" under a maximum, "anything 4 ft or less" over a minimum: the side of the
+    /// check's review line that needs review. Nil unless the line explains this check's outcome
+    /// (`CheckRow.reviewBandApplies`).
+    static func reviewBand(_ row: CheckRow, length: (Float) -> String = Distance.feetAndInches) -> String? {
+        guard row.reviewBandApplies, let review = row.reviewThreshold, let comparison = row.comparison else { return nil }
+        return switch comparison {
+        // Inclusive: a confident pass needs measured + error < review_threshold_ft (at_most), so a
+        // value landing exactly on the line already needs review (result.schema.json).
+        case .atMost: "anything \(length(review)) or more"
+        case .atLeast: "anything \(length(review)) or less"
+        }
     }
 
     /// "Measured 3 ft 2 in.", or "Overlaps by 1 ft 3 in." below zero. A clearance the server

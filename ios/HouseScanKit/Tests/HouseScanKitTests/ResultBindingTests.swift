@@ -31,9 +31,9 @@ import Testing
         let refusal = try #require(throws: ResultBinding.Refusal.self) {
             try ResultBinding.check(answer: data, submittedScene: Self.scene)
         }
-        // Every refusal is the "couldn't read the answer" failure: back to the review, no retry.
+        // Every refusal is an answer House Scan couldn't use: the homeowner may ask again.
         #expect(UploadFailureKind.classify(refusal) == .unreadableAnswer)
-        #expect(!UploadFailureKind.classify(refusal).retryable)
+        #expect(UploadFailureKind.classify(refusal).retryable)
         return refusal
     }
 

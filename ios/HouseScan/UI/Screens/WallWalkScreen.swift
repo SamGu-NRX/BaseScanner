@@ -25,7 +25,7 @@ struct WallWalkScreen: View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
             CameraOverlays(state: state, highlight: nil, cardLegend: $cardLegend, cameraWindow: cameraWindow)
-            if state.coaching == .relocalizing, let meterPhoto {
+            if showsMeterPhoto, let meterPhoto {
                 // "Point at the meter like this.": the saved close-up shows what to aim at.
                 SavedMeterPhoto(image: meterPhoto)
                     .transition(.opacity)
@@ -71,7 +71,7 @@ struct WallWalkScreen: View {
                 .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: controlsKey)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: state.coaching == .relocalizing)
+        .animation(.easeOut(duration: 0.2), value: showsMeterPhoto)
         .onChange(of: state.marking == nil) { _, notMarking in
             if !notMarking { trayOpen = false }
         }
@@ -91,7 +91,11 @@ struct WallWalkScreen: View {
         if let side = state.endQuestion { return ScanCopy.endQuestion(side, leavesOut: state.endQuestionLeavesOut, seen: state.endQuestionLeavesOutSeen) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
         if let confirm = state.nextWallConfirm { return ScanCopy.nextWallConfirm(confirm) }
-        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching, meterPhoto: meterPhoto != nil) }
+        // "Wall ends here" marked nothing: why, and what to do (B-06).
+        if case .markEnd(let side) = state.guidance, let refusal = state.endMarkRefusal {
+            return ScanCopy.withCoaching(ScanCopy.endMarkRefusal(refusal, asked: side), coaching)
+        }
         // Coaching about how the photos come out (the capture gate's, and too little texture)
         // rides along with the task (`ScanCopy.withCoaching`), and its symbol marks the card (`tone`).
         if state.wallTooShort {
@@ -121,6 +125,7 @@ struct WallWalkScreen: View {
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
         if coachingShows, state.wallTooShort { return .refusal }
+        if coachingShows, state.endMarkRefusal != nil, case .markEnd = state.guidance { return .refusal }
         if coachingShows, let coaching { return .coaching(symbol: ScanCopy.coachingSymbol(coaching)) }
         return .normal
     }
@@ -472,6 +477,13 @@ struct WallWalkScreen: View {
     private var meterPhoto: CGImage? {
         if case .captured(let image) = state.closeUp { return image }
         return nil
+    }
+
+    /// The close-up shows only while the card says "Point at the meter like this.": a question
+    /// on the card (the end, overhead, the next wall) outranks the coaching, and the photo must
+    /// not sit under words about something else.
+    private var showsMeterPhoto: Bool {
+        meterPhoto != nil && instruction == ScanCopy.coaching(.relocalizing, meterPhoto: true)
     }
 
     private var cameraS: Float? {
