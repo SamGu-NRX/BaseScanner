@@ -246,7 +246,7 @@ final class ScanEngine {
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
         if let url = options.serverURL, !options.sampleResult {
-            resultClient = HTTPResultClient(serverURL: url)
+            resultClient = HTTPResultClient(serverURL: url, session: options.answersFromGate ? GateAnswerProtocol.session : .shared)
         } else {
             resultClient = SampleResultClient(pace: options.autopilot ? options.autopilotHold : 1.2)
         }

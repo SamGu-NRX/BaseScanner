@@ -19,9 +19,9 @@ final class HTTPResultClient: ResultClient {
     let isSample = false
     private let client: PlacementHTTPClient
 
-    init(serverURL: URL) {
+    init(serverURL: URL, session: URLSession = .shared) {
         self.serverURL = serverURL
-        client = PlacementHTTPClient(serverURL: serverURL)
+        client = PlacementHTTPClient(serverURL: serverURL, session: session)
     }
 
     func submit(scene: Data, progress: @escaping @Sendable (Double) -> Void) async throws -> Data {

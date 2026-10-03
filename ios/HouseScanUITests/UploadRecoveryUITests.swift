@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import Network
 import Synchronization
 import XCTest
 
@@ -12,11 +11,12 @@ final class UploadRecoveryUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    /// The real engine against a placement server on 127.0.0.1. The first answer names another
-    /// scene. The second names the scene sent but has a result schema House Scan doesn't read.
-    /// Every later one is the bundled sample naming the scene sent. The synthetic wall plays to
-    /// the upload; neither unusable answer shows anything of itself, nothing is sent again until
-    /// "Try again", the second says asking again might not help, and the third reaches the result.
+    /// The real engine and its HTTP client, with the test as the placement server
+    /// (`-answersFromGate`). The first answer names another scene. The second names the scene sent
+    /// but has a result schema House Scan doesn't read. Every later one is the bundled sample
+    /// naming the scene sent. The synthetic wall plays to the upload; neither unusable answer shows
+    /// anything of itself, nothing is sent again until "Try again", the second says asking again
+    /// might not help, and the third reaches the result.
     @MainActor
     func testUnusableAnswersAreHeldBackUntilTryAgain() throws {
         let sample = String(decoding: try Data(contentsOf: Self.sampleResult), as: UTF8.self)
@@ -24,12 +24,6 @@ final class UploadRecoveryUITests: XCTestCase {
         let schema = "\"schema_version\": \"1.0\""
         XCTAssertTrue(sample.contains("\"input_sha256\": \"\(zeros)\""))
         XCTAssertTrue(sample.contains(schema))
-        let server = try PlacementStub { request, index in
-            var answer = sample.replacingOccurrences(of: zeros, with: index == 0 ? Self.sha256(Data("another scene".utf8)) : Self.sha256(request.body))
-            if index == 1 { answer = answer.replacingOccurrences(of: schema, with: "\"schema_version\": \"9.0\"") }
-            return Data(answer.utf8)
-        }
-        defer { server.stop() }
 
         let files = FileManager.default
         let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -40,11 +34,17 @@ final class UploadRecoveryUITests: XCTestCase {
         for phase in ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm"] {
             try Data().write(to: gate.appending(path: phase))
         }
+        let server = GateServer(gate: gate) { body, index in
+            var answer = sample.replacingOccurrences(of: zeros, with: index == 0 ? Self.sha256(Data("another scene".utf8)) : Self.sha256(body))
+            if index == 1 { answer = answer.replacingOccurrences(of: schema, with: "\"schema_version\": \"9.0\"") }
+            return Data(answer.utf8)
+        }
+        defer { server.stop() }
 
         let app = XCUIApplication()
         app.launchArguments = [
             "-replay", FullFlowUITests.fixture, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path,
-            "-practiceMeter", "NO", "-serverURL", server.base.absoluteString,
+            "-practiceMeter", "NO", "-serverURL", "http://placement.invalid", "-answersFromGate",
         ]
         app.launch()
         let any = app.descendants(matching: .any)
@@ -53,7 +53,7 @@ final class UploadRecoveryUITests: XCTestCase {
         let second = any.matching(NSPredicate(format: "label == %@", "The answer still couldn't be used")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 300), "the unbound answer never showed as an answer House Scan couldn't use")
         XCTAssertEqual(server.requests.count, 1)
-        XCTAssertEqual(server.requests.first?.path, "/v1/placements")
+        XCTAssertEqual(server.requests.first?.target, "POST /v1/placements")
         holdsWithoutAsking(app, requests: 1, server: server, shot: "uploading-unusableAnswer-engine-1")
 
         tap(app, "action.retryUpload")
@@ -65,13 +65,13 @@ final class UploadRecoveryUITests: XCTestCase {
         tap(app, "action.retryUpload")
         XCTAssertTrue(any["screen.result"].waitForExistence(timeout: 240), "the answer after Try again never reached the result")
         XCTAssertGreaterThanOrEqual(server.requests.count, 3)
-        XCTAssertTrue(server.requests.allSatisfy { $0.method == "POST" && $0.path == "/v1/placements" })
+        XCTAssertTrue(server.requests.allSatisfy { $0.target == "POST /v1/placements" })
     }
 
     /// On an unusable answer: no "Back to review", a way to start over, and for six seconds no
     /// request beyond `requests` and nothing of the answer on a later screen.
     @MainActor
-    private func holdsWithoutAsking(_ app: XCUIApplication, requests: Int, server: PlacementStub, shot name: String) {
+    private func holdsWithoutAsking(_ app: XCUIApplication, requests: Int, server: GateServer, shot name: String) {
         let any = app.descendants(matching: .any)
         XCTAssertFalse(any["action.backToReview"].exists, "an unusable answer must not send the homeowner back to their marks")
         XCTAssertTrue(any["action.startOver"].exists)
@@ -155,85 +155,40 @@ final class UploadRecoveryUITests: XCTestCase {
     }
 }
 
-/// A placement server on 127.0.0.1 that the app in the Simulator reaches like any other: every
-/// request is answered 200 with the body `answer` builds from it and its index, and kept for the
-/// test. It speaks only what the app sends: one request per connection with a `Content-Length`
-/// body, and it closes the connection after replying. `stop()` closes the listener; the
-/// listener's handlers hold the stub weakly, so dropping it closes the listener too.
-final class PlacementStub: Sendable {
+/// The placement server for `-answersFromGate`, answering through the gate folder
+/// (`GateAnswerProtocol` in the app). For each `request-n.json` the app leaves there it writes
+/// `answer-n.json`, built by `answer` from the request's body and n, and keeps the request for the
+/// test. A background thread polls every 0.1 s until `stop()`.
+final class GateServer: Sendable {
     struct Request: Sendable {
-        var method: String
-        var path: String
+        var target: String
         var body: Data
     }
 
-    private let listener: NWListener
-    private let queue = DispatchQueue(label: "placement-stub")
-    private let answer: @Sendable (Request, Int) -> Data
     private let log = Mutex<[Request]>([])
+    private let stopped = Mutex(false)
 
     var requests: [Request] { log.withLock { $0 } }
-    var base: URL { URL(string: "http://127.0.0.1:\(listener.port?.rawValue ?? 0)")! }
 
-    init(answer: @escaping @Sendable (Request, Int) -> Data) throws {
-        self.answer = answer
-        let parameters = NWParameters.tcp
-        parameters.acceptLocalOnly = true
-        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
-        listener = try NWListener(using: parameters)
-        let ready = DispatchSemaphore(value: 0)
-        listener.stateUpdateHandler = { if case .ready = $0 { ready.signal() } }
-        listener.newConnectionHandler = { [weak self, queue] connection in
-            guard self != nil else { return connection.cancel() }
-            connection.start(queue: queue)
-            Self.receive(connection, buffer: Data()) { [weak self] request in
-                guard let self else { return connection.cancel() }
-                self.reply(to: request, on: connection)
+    init(gate: URL, answer: @escaping @Sendable (Data, Int) -> Data) {
+        Thread.detachNewThread { [self] in
+            while !stopped.withLock({ $0 }) {
+                let index = log.withLock { $0.count }
+                let body = gate.appending(path: "request-\(index).json")
+                if let data = try? Data(contentsOf: body) {
+                    let target = (try? String(contentsOf: gate.appending(path: "request-\(index).target"), encoding: .utf8)) ?? ""
+                    log.withLock { $0.append(Request(target: target, body: data)) }
+                    do {
+                        try answer(data, index).write(to: gate.appending(path: "answer-\(index).json"), options: .atomic)
+                    } catch {
+                        XCTFail("couldn't write answer-\(index).json: \(error)")
+                    }
+                } else {
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
             }
         }
-        listener.start(queue: queue)
-        guard ready.wait(timeout: .now() + 5) == .success, listener.port != nil else {
-            listener.cancel()
-            throw URLError(.cannotConnectToHost)
-        }
     }
 
-    func stop() { listener.cancel() }
-
-    deinit { listener.cancel() }
-
-    private func reply(to request: Request, on connection: NWConnection) {
-        let index = log.withLock { log in
-            log.append(request)
-            return log.count - 1
-        }
-        let body = answer(request, index)
-        let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
-        connection.send(content: Data(head.utf8) + body, completion: .contentProcessed { _ in connection.cancel() })
-    }
-
-    private static func receive(_ connection: NWConnection, buffer: Data, handler: @escaping @Sendable (Request) -> Void) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 22) { data, _, done, error in
-            var buffer = buffer
-            if let data { buffer.append(data) }
-            if let request = parse(buffer) { return handler(request) }
-            if done || error != nil { return connection.cancel() }
-            receive(connection, buffer: buffer, handler: handler)
-        }
-    }
-
-    private static func parse(_ data: Data) -> Request? {
-        guard let end = data.range(of: Data("\r\n\r\n".utf8)) else { return nil }
-        let head = String(decoding: data[..<end.lowerBound], as: UTF8.self).components(separatedBy: "\r\n")
-        let line = head[0].split(separator: " ")
-        guard line.count >= 2 else { return nil }
-        var length = 0
-        for field in head.dropFirst() {
-            guard let colon = field.firstIndex(of: ":"), field[..<colon].lowercased() == "content-length" else { continue }
-            length = Int(field[field.index(after: colon)...].trimmingCharacters(in: .whitespaces)) ?? 0
-        }
-        let body = data[end.upperBound...]
-        guard body.count >= length else { return nil }
-        return Request(method: String(line[0]), path: String(line[1]), body: Data(body.prefix(length)))
-    }
+    func stop() { stopped.withLock { $0 = true } }
 }
