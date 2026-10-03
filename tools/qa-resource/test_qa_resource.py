@@ -795,6 +795,14 @@ sys.exit(q.main(sys.argv[2:]))
                 os.close(writer)
             os.close(reader)
 
+    def test_run_inheriting_ignored_sigchld_still_records_payload_failure(self):
+        # Under SIG_IGN, Darwin reaps the payload at exit and Popen reports ECHILD as status 0.
+        ignoring = "import signal; signal.signal(signal.SIGCHLD, signal.SIG_IGN); " + BOOTSTRAP
+        runner = self.launch(self.job_args("ignored-sigchld", "import sys; sys.exit(3)"), bootstrap=ignoring)
+        result = self.finish(runner, "ignored-sigchld", 3)
+        self.assertEqual((result["status"], result["exitCode"]), ("failed", 3))
+        self.assert_lock_free()
+
     def test_timeout_kills_descendant_ignoring_sigterm_and_releases_lock(self):
         program = """import os, signal, time
 if os.fork() == 0:
@@ -1096,7 +1104,8 @@ class OwnershipTests(unittest.TestCase):
                 124: dict(pid=124, ppid=123, pgid=124, uid=os.getuid() + 1, stat="S")}
         with patch.object(qa, "process_snapshot", return_value=rows), \
              patch.object(qa, "process_env", return_value=[]) as env, \
-             patch.object(qa, "kernel_identity", side_effect=lambda pid: dict(pid=pid, start_us=pid * 1_000_000, uid=rows[pid]["uid"], zombie=False)), \
+             patch.object(qa, "kernel_identity", side_effect=lambda pid: dict(pid=pid, start_us=pid * 1_000_000, uid=rows[pid]["uid"],
+                                                                     ppid=rows[pid]["ppid"], zombie=False)), \
              patch.object(qa, "process_identity", side_effect=lambda pid, **unused: dict(pid=pid, start="date", comm="python")):
             found = qa.owned_processes(job, 123)
         self.assertEqual([(p["pid"], p["proof"]) for p in found], [(123, "ancestry"), (124, "ancestry")])
@@ -1106,6 +1115,44 @@ class OwnershipTests(unittest.TestCase):
             self.assertFalse(qa.signal_owned_process(found[1], signal.SIGTERM))
             env.assert_not_called()
             kill.assert_not_called()
+
+    def test_kernel_identity_reports_the_real_parent(self):
+        self.assertEqual(qa.kernel_identity(os.getpid())["ppid"], os.getppid())
+
+    def test_ancestry_is_proven_from_the_kernel_chain_of_the_pinned_execution(self):
+        # The snapshot nominates 124 and 125 as descendants of payload 123. Each schedule is
+        # what the kernel reports once the PID is pinned, after any reuse.
+        job = dict(jobId="job", ownerToken="a" * 32)
+        uid = os.getuid()
+        rows = {123: dict(pid=123, ppid=1, pgid=123, uid=uid, stat="S"),
+                124: dict(pid=124, ppid=123, pgid=123, uid=uid, stat="S"),
+                125: dict(pid=125, ppid=124, pgid=123, uid=uid, stat="S")}
+        def kernel(changes=None):
+            table = {pid: dict(pid=pid, start_us=pid * 1_000_000, uid=uid, ppid=row["ppid"], zombie=False)
+                     for pid, row in rows.items()}
+            for pid, fields in (changes or {}).items():
+                table[pid].update(fields)
+            return lambda pid: dict(table[pid]) if pid in table else None
+        schedules = {
+            "consistent": (kernel(), [123, 124, 125]),
+            # 124 exited and an unrelated process now holds its PID; 125 was reparented.
+            "reused leaf": (kernel({124: dict(ppid=1, start_us=900_000_000), 125: dict(ppid=1)}), [123]),
+            # 124's PID now names a process started after 125, so 125's recorded parent is gone.
+            "reused link": (kernel({124: dict(start_us=900_000_000)}), [123, 124]),
+            # The descendant's PID was reused by a process whose real parent is elsewhere.
+            "reused pid": (kernel({125: dict(ppid=77, start_us=901_000_000)}), [123, 124]),
+        }
+        for name, (identity, expected) in schedules.items():
+            with self.subTest(schedule=name), \
+                 patch.object(qa, "process_snapshot", return_value=rows), \
+                 patch.object(qa, "process_env", return_value=[]), \
+                 patch.object(qa, "kernel_identity", side_effect=identity), \
+                 patch.object(qa, "process_identity", side_effect=lambda pid, **unused: dict(pid=pid, start="date", comm="python")), \
+                 patch.object(qa.os, "kill") as kill:
+                found = qa.owned_processes(job, 123)
+                self.assertEqual([p["pid"] for p in found], expected)
+                self.assertTrue(all(p["proof"] == "ancestry" for p in found))
+                kill.assert_not_called()
 
     def test_proven_identity_survives_lost_token_and_reparenting(self):
         identity = dict(pid=124, uid=os.getuid(), start_us=124_000_001,
@@ -1449,7 +1496,7 @@ class PureTests(unittest.TestCase):
             self.assertEqual(qa.release_ticket(path, None), [])
             self.assertFalse(path.exists())
 
-    def test_failed_first_record_write_leaves_the_id_reusable(self):
+    def test_failed_job_record_setup_leaves_the_id_reusable(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             args = Mock(state_dir=root / "state", job_id="no-space", kind="package", argv=["unused"],
@@ -1457,10 +1504,17 @@ class PureTests(unittest.TestCase):
             def full_disk(directory, job):
                 (directory / "job.json.tmp").write_text("partial")
                 raise OSError(28, "No space left on device")
-            with patch.object(qa, "write_job", side_effect=full_disk):
-                with self.assertRaisesRegex(qa.JobSetupError, "cannot write the job record: .*No space left"):
-                    qa.create_job(args)
-            self.assertFalse((root / "state/jobs/no-space").exists())
+            original_open = Path.open
+            def full_disk_lock(path, *rest, **keywords):
+                if path.name == "live.lock":
+                    raise OSError(28, "No space left on device")
+                return original_open(path, *rest, **keywords)
+            for name, failure in (("record", patch.object(qa, "write_job", side_effect=full_disk)),
+                                  ("live lock", patch.object(Path, "open", autospec=True, side_effect=full_disk_lock))):
+                with self.subTest(failure=name), failure:
+                    with self.assertRaisesRegex(qa.JobSetupError, "cannot create the job record: .*No space left"):
+                        qa.create_job(args)
+                self.assertFalse((root / "state/jobs/no-space").exists())
             directory, live, job = qa.create_job(args)
             live.close()
             self.assertEqual(qa.read_job(directory)["status"], "queued")
@@ -1487,6 +1541,32 @@ class PureTests(unittest.TestCase):
                 self.assertEqual((result["status"], result["signal"]), ("cancelled", sig))
                 self.assertEqual({s: signal.getsignal(s) for s in qa.RUNNER_SIGNALS}, before)
                 self.assertFalse(qa.live_report(directory)["live"])
+
+    def test_interruption_between_job_creation_and_handlers_is_recorded(self):
+        real_reader = qa.open_cancel_reader
+        for command in ("run", "submit"):
+            for sig in qa.RUNNER_SIGNALS:
+                with self.subTest(command=command, signal=sig), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    def reader(directory):
+                        # Unblocked, this signal would take the default action in the test runner.
+                        self.assertIn(sig, signal.pthread_sigmask(signal.SIG_BLOCK, []))
+                        os.kill(os.getpid(), sig)
+                        return real_reader(directory)
+                    handlers = {s: signal.getsignal(s) for s in (*qa.RUNNER_SIGNALS, signal.SIGCHLD)}
+                    mask = signal.pthread_sigmask(signal.SIG_BLOCK, [])
+                    argv = [command, "--state-dir", str(root / "state"), "--lock", str(root / "lock"),
+                            "--job-id", "handoff", "--kind", "package", "--cwd", str(root),
+                            "--admission-deadline", "3", "--timeout", "1", "--", sys.executable, "-c", "pass"]
+                    with patch.object(qa, "open_cancel_reader", side_effect=reader), \
+                         patch.object(qa.subprocess, "Popen") as spawn:
+                        self.assertEqual(qa.main(argv), 130)
+                    spawn.assert_not_called()
+                    result = qa.read_job(root / "state/jobs/handoff")
+                    self.assertEqual((result["status"], result["signal"]), ("cancelled", sig))
+                    self.assertFalse(qa.live_report(root / "state/jobs/handoff")["live"])
+                    self.assertEqual({s: signal.getsignal(s) for s in handlers}, handlers)
+                    self.assertEqual(signal.pthread_sigmask(signal.SIG_BLOCK, []), mask)
 
     def test_cleanup_hold_keeps_lock_until_group_gone_or_deadline(self):
         for members_remain in (False, True):

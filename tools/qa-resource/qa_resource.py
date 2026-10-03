@@ -185,7 +185,7 @@ class ProcessTimeval(ctypes.Structure):
 
 def kernel_identity(pid):
     # 64-bit Darwin SDK sizeof/offsetof: kinfo_proc=648, start=0, stat=36,
-    # pid=40, kp_eproc.e_ucred.cr_uid=420. Fail closed if the runtime ABI differs.
+    # pid=40, kp_eproc.e_ucred.cr_uid=420, kp_eproc.e_ppid=560. Fail closed if the runtime ABI differs.
     if ctypes.sizeof(ctypes.c_void_p) != 8 or ctypes.sizeof(ProcessTimeval) != 16:
         raise RuntimeError("process identity requires the 64-bit Darwin kinfo_proc ABI")
     buffer = ctypes.create_string_buffer(648)
@@ -207,7 +207,30 @@ def kernel_identity(pid):
         raise RuntimeError(f"invalid kinfo_proc start time for PID {pid}")
     return dict(pid=pid, start_us=start.seconds * 1_000_000 + start.microseconds,
                 uid=ctypes.c_uint.from_buffer(buffer, 420).value,
+                ppid=ctypes.c_int.from_buffer(buffer, 560).value,
                 zombie=ctypes.c_byte.from_buffer(buffer, 36).value == 5)
+
+
+def kernel_ancestry(identity, child_pid, deadline):
+    """Whether the kernel's current parent chain leads from this pinned execution to child_pid.
+
+    A ps snapshot is not atomic, and any PID in it may have been reused since. Each link here
+    comes from one kinfo_proc read, which reports a process's start time and parent together.
+    A true parent started no later than its child. A parent PID naming a later process, or one
+    that is gone, means the recorded link no longer holds, so the proof fails closed.
+    """
+    current, seen = identity, set()
+    while current["pid"] != child_pid:
+        inspection_timeout(deadline)
+        parent_pid = current["ppid"]
+        if parent_pid <= 1 or parent_pid in seen:
+            return False
+        seen.add(parent_pid)
+        parent = kernel_identity(parent_pid)
+        if parent is None or parent["start_us"] > current["start_us"]:
+            return False
+        current = parent
+    return True
 
 
 def process_snapshot(deadline=None):
@@ -293,6 +316,11 @@ def owned_processes(job, child_pid, deadline=None, known=None, observed=None):
                         continue  # Enumeration-to-env disappearance is settled-gone.
                     # Restricted or unreadable environments alone are not proof.
             inspection_timeout(deadline)
+            if ancestry:
+                # The snapshot only nominated this PID. Prove the pinned execution itself
+                # descends from the payload; the start-time check below then ties this
+                # proof to the identity that gets recorded.
+                ancestry = kernel_ancestry(before, child_pid, deadline)
             if not token and not ancestry:
                 continue
             if observed is not None:
@@ -748,8 +776,6 @@ def create_job(args):
         directory.mkdir()
     except FileExistsError as error:
         raise ValueError(f"job {args.job_id} already exists; choose a new id") from error
-    live = (directory / "live.lock").open("a+")
-    fcntl.flock(live, fcntl.LOCK_EX | fcntl.LOCK_NB)
     job = dict(jobId=args.job_id, kind=args.kind, argv=args.argv, cwd=str(args.cwd),
                device=args.device, status="queued", reasons=[], runnerPid=None,
                runnerStart=None, childPgid=None, bootedByJob=False, exitCode=None,
@@ -759,18 +785,22 @@ def create_job(args):
                ownerToken=secrets.token_hex(16), escapedProcesses=[], cancelChannel=CANCEL_FIFO,
                ignoredProcesses=[], logs={name: str(directory / (name + ".log"))
                                          for name in ("output", "runner")})
+    live = None
     try:
+        live = (directory / "live.lock").open("a+")
+        fcntl.flock(live, fcntl.LOCK_EX | fcntl.LOCK_NB)
         write_job(directory, job)
     except OSError as error:
         # No record exists to carry an error, and the directory alone would reject every retry
         # of this id as a duplicate. This call created it, so removing it touches nothing else.
-        live.close()
         leftovers = []
+        if live is not None:
+            cleanup_step(leftovers, "close live lock", live.close)
         for path in (directory / "job.json.tmp", directory / "job.json", directory / "live.lock", directory):
             cleanup_step(leftovers, f"remove {path}",
                          lambda path=path: path.rmdir() if path == directory else path.unlink(missing_ok=True))
         detail = f"; {'; '.join(leftovers)}" if leftovers else ""
-        raise JobSetupError(f"job {args.job_id}: cannot write the job record: {error}{detail}") from error
+        raise JobSetupError(f"job {args.job_id}: cannot create the job record: {error}{detail}") from error
     try:
         (directory / "output.log").touch()
         (directory / "runner.log").touch()
@@ -924,6 +954,11 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
             signal.signal(sig, signal.SIG_IGN)
         raise Cancelled(signum)
     old_signals = {sig: signal.signal(sig, interrupted) for sig in RUNNER_SIGNALS}
+    # An inherited SIG_IGN makes Darwin reap the payload at exit. Its status is then lost
+    # (Popen maps ECHILD to 0, recording a failure as success), and its PID and group id are
+    # no longer pinned for cleanup. Kept apart from old_signals, which cleanup sets to SIG_IGN,
+    # and restored only after cleanup has finished with the payload.
+    old_sigchld = signal.signal(signal.SIGCHLD, signal.SIG_DFL)
     listener = None
     try:
         # submit starts the runner with these blocked; a cancel that arrived meanwhile is
@@ -1108,6 +1143,7 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
         for sig, previous in old_signals.items():
             cleanup_step(cleanup_errors, f"restore signal {sig}",
                          lambda sig=sig, previous=previous: signal.signal(sig, previous))
+        cleanup_step(cleanup_errors, "restore SIGCHLD", lambda: signal.signal(signal.SIGCHLD, old_sigchld))
         if len(cleanup_errors) != recorded_errors:
             mark_cleanup_errors()
             cleanup_step(cleanup_errors, "write finalizer errors", lambda: write_job(directory, job))
@@ -1140,6 +1176,8 @@ def submit(directory, live, job, lock_path, cancel_fd):
     # while waiting for the ticket must record it as cancelled rather than leave it queued.
     original_handlers = {sig: signal.signal(sig, interrupt) for sig in RUNNER_SIGNALS}
     try:
+        # main blocks these through job creation. A signal held since then raises here.
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, RUNNER_SIGNALS)
         ticket_path, ticket = acquire_ticket(directory.parent.parent, job["jobId"], deadline)
         # Keep SIGCHLD at its default so an exited runner stays an unreaped zombie and its PID
         # cannot be reused before an interrupted submit signals it. An inherited SIG_IGN
@@ -1373,22 +1411,29 @@ def main(argv=None):
         args.argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
         if not args.argv:
             parser.error("argv is required after --")
+        # From job creation until run_job or submit installs its handlers, nothing would record
+        # an interruption, so these signals stay pending. Both unblock them inside their own
+        # try, where a pending one becomes a recorded cancellation.
+        previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, RUNNER_SIGNALS)
         try:
-            directory, live, job = create_job(args)
-            # Hold the cancel FIFO's read end from job creation, so a cancel sent before the
-            # runner's listener starts is queued in the pipe rather than refused.
             try:
-                cancel_fd = open_cancel_reader(directory)
-            except OSError as error:
-                raise fail_unstarted_job(directory, live, job, f"cannot open the cancel FIFO: {error}") from error
-        except ValueError as error:
-            parser.error(str(error))
-        except JobSetupError as error:
-            print(str(error), file=sys.stderr)
-            return 125
-        if args.command == "submit":
-            return submit(directory, live, job, args.lock, cancel_fd)
-        return run_job(directory, live, job, args.lock, cancel_fd=cancel_fd)
+                directory, live, job = create_job(args)
+                # Hold the cancel FIFO's read end from job creation, so a cancel sent before the
+                # runner's listener starts is queued in the pipe rather than refused.
+                try:
+                    cancel_fd = open_cancel_reader(directory)
+                except OSError as error:
+                    raise fail_unstarted_job(directory, live, job, f"cannot open the cancel FIFO: {error}") from error
+            except ValueError as error:
+                parser.error(str(error))
+            except JobSetupError as error:
+                print(str(error), file=sys.stderr)
+                return 125
+            if args.command == "submit":
+                return submit(directory, live, job, args.lock, cancel_fd)
+            return run_job(directory, live, job, args.lock, cancel_fd=cancel_fd)
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
     directory = args.state_dir / "jobs" / (args.job_id or "")
     if args.job_id and not (directory / "job.json").is_file():
         print(f"unknown job {args.job_id}: {directory / 'job.json'}", file=sys.stderr)
