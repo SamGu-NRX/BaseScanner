@@ -100,9 +100,10 @@ struct UploadingScreen: View {
 }
 
 /// The ways on after an answer House Scan couldn't use. "Try again" leads the first time. Once it
-/// has already failed again, it steps down to a secondary button and the note points to sharing
-/// the scan, so the homeowner isn't left pressing the same button. Never "Back to review": the
-/// marks aren't the problem.
+/// has already failed again, it takes the quiet style of the choices around it and the note points
+/// to sharing the scan, so the homeowner isn't left pressing the same button. Not the dark
+/// secondary style: that one is for camera screens, and on this light screen it outweighed the
+/// buttons it was meant to sit beside. Never "Back to review": the marks aren't the problem.
 private struct UnusableAnswerActions: View {
     var repeated: Bool
     var shareableScan: URL?
@@ -118,7 +119,7 @@ private struct UnusableAnswerActions: View {
                 .accessibilityIdentifier("upload.answerNote")
             Group {
                 if repeated {
-                    Button("Try again") { actions.retryUpload() }.buttonStyle(.secondary)
+                    Button("Try again") { actions.retryUpload() }.buttonStyle(.quiet)
                 } else {
                     Button("Try again") { actions.retryUpload() }.buttonStyle(.primary)
                 }
