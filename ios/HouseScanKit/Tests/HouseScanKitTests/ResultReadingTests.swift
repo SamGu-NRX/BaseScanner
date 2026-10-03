@@ -322,7 +322,7 @@ import simd
         object["checks"] = try #require(object["checks"] as? [[String: Any]]).map { check in
             var check = check
             check["outcome"] = "pass"
-            check["unsure_cause"] = NSNull()
+            check.removeValue(forKey: "unsure_cause")
             return check
         }
         object["missing_evidence"] = [Any]()
