@@ -158,37 +158,61 @@ final class UploadRecoveryUITests: XCTestCase {
 /// The placement server for `-answersFromGate`, answering through the gate folder
 /// (`GateAnswerProtocol` in the app). For each `request-n.json` the app leaves there it writes
 /// `answer-n.json`, built by `answer` from the request's body and n, and keeps the request for the
-/// test. A background thread polls every 0.1 s until `stop()`.
+/// test. Requests are found by their numbers, not counted, so one the app failed to write doesn't
+/// hold up the next. A background thread polls every 0.1 s until `stop()`.
 final class GateServer: Sendable {
     struct Request: Sendable {
+        var index: Int
         var target: String
         var body: Data
     }
 
-    private let log = Mutex<[Request]>([])
-    private let stopped = Mutex(false)
+    private struct State {
+        var requests: [Request] = []
+        var problems: [String] = []
+        var stopped = false
+    }
 
-    var requests: [Request] { log.withLock { $0 } }
+    private let state = Mutex(State())
+    private let finished = DispatchSemaphore(value: 0)
+
+    var requests: [Request] { state.withLock { $0.requests } }
 
     init(gate: URL, answer: @escaping @Sendable (Data, Int) -> Data) {
         Thread.detachNewThread { [self] in
-            while !stopped.withLock({ $0 }) {
-                let index = log.withLock { $0.count }
-                let body = gate.appending(path: "request-\(index).json")
-                if let data = try? Data(contentsOf: body) {
-                    let target = (try? String(contentsOf: gate.appending(path: "request-\(index).target"), encoding: .utf8)) ?? ""
-                    log.withLock { $0.append(Request(target: target, body: data)) }
-                    do {
-                        try answer(data, index).write(to: gate.appending(path: "answer-\(index).json"), options: .atomic)
-                    } catch {
-                        XCTFail("couldn't write answer-\(index).json: \(error)")
-                    }
-                } else {
+            defer { finished.signal() }
+            while !state.withLock({ $0.stopped }) {
+                let answered = Set(state.withLock { $0.requests.map(\.index) })
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: gate.path)) ?? []
+                let waiting = names.compactMap(Self.requestIndex).filter { !answered.contains($0) }.sorted()
+                guard !waiting.isEmpty else {
                     Thread.sleep(forTimeInterval: 0.1)
+                    continue
+                }
+                for index in waiting {
+                    guard let body = try? Data(contentsOf: gate.appending(path: "request-\(index).json")) else { continue }
+                    let target = (try? String(contentsOf: gate.appending(path: "request-\(index).target"), encoding: .utf8)) ?? ""
+                    state.withLock { $0.requests.append(Request(index: index, target: target, body: body)) }
+                    do {
+                        try answer(body, index).write(to: gate.appending(path: "answer-\(index).json"), options: .atomic)
+                    } catch {
+                        state.withLock { $0.problems.append("couldn't write answer-\(index).json: \(error)") }
+                    }
                 }
             }
         }
     }
 
-    func stop() { stopped.withLock { $0 = true } }
+    /// Stops the thread and waits for it, so nothing is written into the gate folder once this
+    /// returns, then reports any answer it couldn't write as a failure of the calling test.
+    func stop() {
+        state.withLock { $0.stopped = true }
+        if finished.wait(timeout: .now() + 5) == .timedOut { XCTFail("the gate server's thread didn't stop") }
+        for problem in state.withLock({ $0.problems }) { XCTFail(problem) }
+    }
+
+    private static func requestIndex(_ name: String) -> Int? {
+        guard name.hasPrefix("request-"), name.hasSuffix(".json") else { return nil }
+        return Int(name.dropFirst("request-".count).dropLast(".json".count))
+    }
 }

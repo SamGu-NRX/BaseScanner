@@ -28,7 +28,7 @@ import OSLog
 ///   ground, as ARKit refining the ground would (`ScanEngine.injectGroundForTest`). Replays carry
 ///   no plane evidence, so this is the only way a UI test reaches that path. Meters must be over
 ///   the engine's 1 cm refine threshold and at most `GroundPlaneChoice.maximumRaise`.
-/// - `-answersFromGate`: with `-serverURL` and `-autopilotGate`, uploads go through the gate
+/// - `-answersFromGate`: with `-autopilotGate` and a server URL, uploads go through the gate
 ///   folder instead of the network: the UI test reads each request there and writes the server's
 ///   answer (`GateAnswerProtocol`).
 /// - `-simulateAppStore`: run as an App Store install would, so the developer options and practice
@@ -68,7 +68,7 @@ struct LaunchOptions: Equatable {
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
         answersFromGate = arguments.contains("-answersFromGate")
         if answersFromGate, autopilotGate == nil || serverURL == nil {
-            preconditionFailure("-answersFromGate needs -autopilotGate and -serverURL")
+            preconditionFailure("-answersFromGate needs -autopilotGate and a server URL (-serverURL or the build's)")
         }
         if let text = value(after: "-injectGroundRise") {
             guard let meters = Float(text), meters > 0.01, meters <= 0.1 else {

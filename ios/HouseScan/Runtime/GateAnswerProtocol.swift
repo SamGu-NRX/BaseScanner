@@ -39,6 +39,15 @@ final class GateAnswerProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
+        let body: Data
+        do {
+            body = try Self.body(of: request)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
+        // Numbered only once the body is read. A write that fails after this leaves a gap in the
+        // numbers, which the test's server skips over.
         let index = Self.started.withLock { count in
             defer { count += 1 }
             return count
@@ -46,7 +55,7 @@ final class GateAnswerProtocol: URLProtocol, @unchecked Sendable {
         do {
             let target = "\(request.httpMethod ?? "GET") \(url.path())"
             try Data(target.utf8).write(to: gate.appending(path: "request-\(index).target"), options: .atomic)
-            try Self.body(of: request).write(to: gate.appending(path: "request-\(index).json"), options: .atomic)
+            try body.write(to: gate.appending(path: "request-\(index).json"), options: .atomic)
         } catch {
             client?.urlProtocol(self, didFailWithError: error)
             return
