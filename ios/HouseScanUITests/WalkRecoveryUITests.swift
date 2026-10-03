@@ -16,6 +16,7 @@ final class WalkRecoveryUITests: XCTestCase {
     func testTheEndCardAnswersThatTheWallKeepsGoing() throws {
         let app = launch(["-uiDemoPhase", "wallWalk", "-uiDemoMarkEnd"])
         XCTAssertTrue(label(app, "instruction").contains("Is this the right end of the wall?"))
+        snap(app, "wallWalk-markEnd-keepsGoing")
         XCTAssertTrue(element(app, "action.markEnd").exists, "Wall ends here must stay on offer")
         let keepsGoing = reply(app, "The wall keeps going")
         XCTAssertTrue(keepsGoing.waitForExistence(timeout: 5), "the end card has no way to say the wall goes on")
@@ -33,6 +34,7 @@ final class WalkRecoveryUITests: XCTestCase {
     func testARefusedWallEndSaysWhatToDo() throws {
         let app = launch(["-uiDemoPhase", "wallWalk", "-uiDemoMarkEnd", "-uiDemoEndMarkRefusal"])
         let card = label(app, "instruction")
+        snap(app, "wallWalk-markEnd-refused")
         XCTAssertTrue(card.contains("The circle isn't on the wall"), "card reads: \(card)")
         XCTAssertTrue(card.contains("Aim it at the wall where it stops or turns"), "card reads: \(card)")
         XCTAssertTrue(element(app, "action.markEnd").exists)
@@ -46,11 +48,13 @@ final class WalkRecoveryUITests: XCTestCase {
         let gap = launch(["-uiDemoPhase", "gapRequest", "-uiDemoCoaching", "relocalizing"], screen: "screen.gapRequest")
         XCTAssertTrue(element(gap, "relocalize.meterPhoto").waitForExistence(timeout: 5), "the follow-up view must show the close-up")
         XCTAssertTrue(label(gap, "instruction").contains("Point at the meter like this."))
+        snap(gap, "gapRequest-relocalizing")
         gap.terminate()
 
         let walk = launch(["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "relocalizing", "-uiDemoCloseUpSkipped"])
         let card = label(walk, "instruction")
         XCTAssertFalse(element(walk, "relocalize.meterPhoto").exists)
+        snap(walk, "wallWalk-relocalizing-noCloseUp")
         XCTAssertTrue(card.contains("Point back at your meter"), "card reads: \(card)")
         XCTAssertFalse(card.contains("like this"), "no photo, so no \"like this\": \(card)")
     }
@@ -63,6 +67,15 @@ final class WalkRecoveryUITests: XCTestCase {
         XCTAssertTrue(element(app, screen).waitForExistence(timeout: 15), "\(screen) never appeared")
         XCTAssertTrue(element(app, "instruction").waitForExistence(timeout: 5))
         return app
+    }
+
+    /// Kept in the result bundle for the PR's captures.
+    @MainActor
+    private func snap(_ app: XCUIApplication, _ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
     }
 
     @MainActor
