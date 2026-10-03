@@ -2,9 +2,12 @@ import SwiftUI
 
 /// "Checking your wall": a calm wait. Three steps tick off in order; progress is shown
 /// separately from how complete the scan was (docs/05 section 2). A failure that sending again
-/// can fix (offline, a server error) offers "Try again". A refused scan can't be fixed by sending
-/// the same thing again, so it offers the review and a fresh start instead. Both offer "Share
-/// scan" once the scan is packaged, so a scan the server never took can still reach the team.
+/// can fix (offline, a server error) offers "Try again". So does an answer House Scan couldn't
+/// use, which isn't the scan's fault; when that keeps happening the screen says asking again may
+/// not help and points to sharing the scan or starting over. A refused scan can't be fixed by
+/// sending the same thing again, so it offers the review and a fresh start instead. All of them
+/// offer "Share scan" once the scan is packaged, so a scan the server never took can still reach
+/// the team.
 ///
 /// When the check answers but still wants views the camera can take now, the engine goes
 /// straight back to the camera for them. This screen says so first ("One more view to
@@ -67,6 +70,8 @@ struct UploadingScreen: View {
                             ShareScanButton(url: scan)
                         }
                     }
+                case .unusableAnswer(let attempts):
+                    UnusableAnswerActions(repeated: attempts > 1, shareableScan: state.shareableScan, actions: actions)
                 case .rejected:
                     VStack(spacing: 16) {
                         Button("Back to review") { actions.backToReview() }
@@ -96,6 +101,53 @@ struct UploadingScreen: View {
     }
 }
 
+/// The ways on after an answer House Scan couldn't use. "Try again" leads the first time. Once it
+/// has already failed again, it takes the quiet style of the choices around it and the note points
+/// to sharing the scan, so the homeowner isn't left pressing the same button. Not the dark
+/// secondary style: that one is for camera screens, and on this light screen it outweighed the
+/// buttons it was meant to sit beside. Never "Back to review": the marks aren't the problem.
+private struct UnusableAnswerActions: View {
+    var repeated: Bool
+    var shareableScan: URL?
+    let actions: any ScanActions
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text(note)
+                .font(Typeface.hint)
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("upload.answerNote")
+            Group {
+                if repeated {
+                    Button("Try again") { actions.retryUpload() }.buttonStyle(.quiet)
+                } else {
+                    Button("Try again") { actions.retryUpload() }.buttonStyle(.primary)
+                }
+            }
+            .accessibilityHint("Asks the server again for the same scan.")
+            .accessibilityIdentifier("action.retryUpload")
+            if let scan = shareableScan {
+                ShareScanButton(url: scan)
+            }
+            Button("Start over") { actions.startOver() }
+                .buttonStyle(.quiet)
+                .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
+                .accessibilityIdentifier("action.startOver")
+        }
+    }
+
+    private var note: String {
+        switch (repeated, shareableScan != nil) {
+        case (false, true): "Keep this scan open to try again, or use Share scan to save a copy. House Scan can't reopen it after you close the app."
+        case (false, false): "Keep this scan open to try again. House Scan can't reopen it after you close the app."
+        case (true, true): "Share scan saves a copy you can send to the House Scan team. House Scan can't reopen this scan after you close the app."
+        case (true, false): "House Scan can't reopen this scan after you close the app."
+        }
+    }
+}
+
 private struct UploadEmblem: View {
     var upload: UploadState
     var followsUp: Bool
@@ -117,7 +169,7 @@ private struct UploadEmblem: View {
 
     private var isWorking: Bool {
         switch upload {
-        case .failed, .rejected, .done: false
+        case .failed, .rejected, .unusableAnswer, .done: false
         case .idle, .packaging, .uploading, .analyzing: true
         }
     }
@@ -130,13 +182,14 @@ private struct UploadEmblem: View {
         case .analyzing: "ruler"
         case .failed(_, let offline): offline ? "wifi.slash" : "exclamationmark.triangle"
         case .rejected: "exclamationmark.triangle"
+        case .unusableAnswer: "exclamationmark.bubble"
         case .done: "checkmark.circle"
         }
     }
 
     private var tint: Color {
         switch upload {
-        case .failed, .rejected: Palette.caution
+        case .failed, .rejected, .unusableAnswer: Palette.caution
         case .idle, .packaging, .uploading, .analyzing, .done: Palette.signal
         }
     }
@@ -175,7 +228,7 @@ private struct UploadSteps: View {
         case .uploading: 1
         case .analyzing: 2
         case .done: 3
-        case .failed, .rejected: 1
+        case .failed, .rejected, .unusableAnswer: 1
         }
     }
 

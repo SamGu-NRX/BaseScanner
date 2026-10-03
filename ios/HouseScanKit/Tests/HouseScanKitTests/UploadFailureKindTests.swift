@@ -46,11 +46,24 @@ import Testing
         #expect(!UploadFailureKind.classify(httpStatus: 422).retryable)
     }
 
-    @Test func anythingElseIsAnUnreadableAnswer() {
+    /// An answer House Scan couldn't use is the answer's problem, not the scan's: the homeowner may
+    /// ask again, unlike a refusal.
+    @Test func anythingElseIsAnUnreadableAnswerThatMayBeTriedAgain() {
         #expect(UploadFailureKind.classify(httpStatus: 302) == .unreadableAnswer)
         #expect(UploadFailureKind.classify(httpStatus: 600) == .unreadableAnswer)
         struct DecodeFailure: Error {}
         #expect(UploadFailureKind.classify(DecodeFailure()) == .unreadableAnswer)
-        #expect(!UploadFailureKind.unreadableAnswer.retryable)
+        #expect(UploadFailureKind.unreadableAnswer.retryable)
+        #expect(!UploadFailureKind.refused.retryable)
+    }
+
+    /// The placement client's errors: a status is classified as that status, and a response that
+    /// wasn't HTTP means no server answered.
+    @Test func placementClientErrors() {
+        #expect(UploadFailureKind.classify(PlacementHTTPError.server(status: 422, body: "")) == .refused)
+        #expect(UploadFailureKind.classify(PlacementHTTPError.server(status: 503, body: "")) == .serverError)
+        #expect(UploadFailureKind.classify(PlacementHTTPError.server(status: 429, body: "", retryAfter: "30")) == .busy(retryAfter: 30))
+        #expect(UploadFailureKind.classify(PlacementHTTPError.server(status: 302, body: "")) == .unreadableAnswer)
+        #expect(UploadFailureKind.classify(PlacementHTTPError.notHTTP) == .unreachable)
     }
 }

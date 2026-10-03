@@ -563,7 +563,7 @@ enum ScanCopy {
             switch upload {
             case .idle, .packaging, .uploading, .analyzing:
                 return Instruction(title: "Making a sample result", detail: "No server is connected, so nothing leaves this phone. The result you'll see is an example, not a check of your wall.")
-            case .failed, .rejected, .done:
+            case .failed, .rejected, .unusableAnswer, .done:
                 break
             }
         }
@@ -586,6 +586,13 @@ enum ScanCopy {
         // The engine's message is already in the homeowner's words and says why.
         case .rejected(let message):
             Instruction(title: "We couldn't check this scan", detail: message)
+        // The server did answer; what failed is the answer, so the words never point at the marks.
+        case .unusableAnswer(let attempts) where attempts > 1:
+            Instruction(title: "The answer still couldn't be used", detail: "Asking again might not fix this. It isn't about what you marked.")
+        case .unusableAnswer:
+            Instruction(
+                title: "We couldn't use the server's answer",
+                detail: "The server answered, but House Scan couldn't read the answer or match it to your scan, so it isn't shown. It isn't about what you marked.")
         case .done:
             Instruction(title: "Done", detail: nil)
         }
