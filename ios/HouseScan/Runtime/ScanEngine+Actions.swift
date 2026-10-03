@@ -139,18 +139,37 @@ extension ScanEngine: ScanActions {
 
     /// Marks a wall end during the walk, or, during a server past_end request, marks that
     /// request's end again at wherever the wall is now seen to stop.
+    /// The end at `point`, or with no point at the circle in the middle of the view: the walk's
+    /// "Wall ends here" button. The button answers the card, which names a side, so on the walk
+    /// it marks only that side, only with the phone's place known, and only where the circle is
+    /// on the wall; otherwise the card says why (`EndMarkRefusal`, B-06). Before, each of those
+    /// did nothing, and aiming across the meter ended the other side. A tap at a point (the
+    /// autopilot's) marks the side it lands on, as before.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
         guard state.phase == .wallWalk || (state.phase == .gapRequest && pastEndSide != nil),
               let wall = coverage?.wall, let frame = currentFrame else { return }
-        guard let hit = wallHit(point, viewSize: viewSize, frame: frame, wall: wall) else { return }
+        var asked: WallSide?
+        if point == nil, state.phase == .wallWalk, case .markEnd(let side) = state.guidance { asked = side }
+        if asked != nil, frame.tracking != .normal { return refuseEndMark(.trackingNotReady) }
+        guard let hit = wallHit(point, viewSize: viewSize, frame: frame, wall: wall) else {
+            if asked != nil { refuseEndMark(.noWall) }
+            return
+        }
         let side: WallSide = hit.s < 0 ? .left : .right
+        if let asked, side != asked { return refuseEndMark(.otherSide(side)) }
         if state.phase == .gapRequest, side != pastEndSide { return }
+        state.endMarkRefusal = nil
         // Unexplored until the homeowner says something blocks the wall there: an unanswered
         // question must not tell the server the usable wall stops at this point.
         state.endQuestion = side
         state.endQuestionLeavesOut = nil
         state.endQuestionLeavesOutSeen = false
         setEnd(side, at: hit.s, kind: .unexplored)
+    }
+
+    private func refuseEndMark(_ refusal: EndMarkRefusal) {
+        state.endMarkRefusal = refusal
+        RuntimeLog.engine.info("wall ends here refused: \(String(describing: refusal), privacy: .public)")
     }
 
     func answerWallEnd(turnsCorner: Bool) {

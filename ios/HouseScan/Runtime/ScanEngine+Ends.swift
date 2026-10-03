@@ -104,6 +104,12 @@ extension ScanEngine {
     func publishEndPreview() {
         let preview = currentEndPreview()
         if preview != state.endPreview { state.endPreview = preview }
+        // A refusal stands until the circle is on the end the card asks for, or the card moves on.
+        if state.endMarkRefusal != nil {
+            var fixed = true
+            if case .markEnd(let side) = state.guidance { fixed = preview?.atReticle == true && preview?.side == side }
+            if fixed { state.endMarkRefusal = nil }
+        }
     }
 
     func endWallHere() {

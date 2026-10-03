@@ -22,6 +22,11 @@ struct GapRequestScreen: View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
             CameraOverlays(state: state, highlight: state.gap, cameraWindow: cameraWindow)
+            if state.coaching == .relocalizing, let meterPhoto {
+                // "Point at the meter like this.": the saved close-up, as on the walk (B-23).
+                SavedMeterPhoto(image: meterPhoto)
+                    .transition(.opacity)
+            }
             if state.gap?.isSatisfied == true {
                 SuccessBadge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -77,6 +82,7 @@ struct GapRequestScreen: View {
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.pin, value: state.gap?.isSatisfied)
+        .animation(.easeOut(duration: 0.2), value: state.coaching == .relocalizing)
     }
 
     /// "Show my result", on every request the check sent back, even with one view left: the
@@ -145,12 +151,19 @@ struct GapRequestScreen: View {
     /// thanks" for as long as it did (field test 4.1, run 3).
     private var instruction: Instruction {
         if asking { return ScanCopy.overheadQuestion }
-        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching, meterPhoto: meterPhoto != nil) }
         guard let gap = state.gap else { return ScanCopy.withCoaching(ScanCopy.guidance(.gap), coaching) }
         if gap.isSatisfied {
             return Instruction(title: "Got it, thanks", detail: followUps > 0 ? "Updating your result." : "That's the view we needed.")
         }
         return ScanCopy.withCoaching(ScanCopy.gap(gap), coaching)
+    }
+
+    /// The meter close-up, shown with "Point at the meter like this." while the phone finds its
+    /// place again; nil when the close-up was skipped.
+    private var meterPhoto: CGImage? {
+        if case .captured(let image) = state.closeUp { return image }
+        return nil
     }
 
     /// The coaching on the card, marked with its symbol (`tone`). Once the view is in, the

@@ -553,6 +553,17 @@ enum NextWallRefusal: Equatable, Sendable {
     case notAtCorner
 }
 
+/// Why "Wall ends here" at the circle marked no end (`ScanViewState.endMarkRefusal`). Before,
+/// the button did nothing at all in each case, and nothing said why (B-06).
+enum EndMarkRefusal: Equatable, Sendable {
+    /// The circle isn't on the wall within the distance a camera's view counts for
+    /// (`CoverageConfig.maxDistance`): on the ground, the sky, or far down a long wall.
+    case noWall
+    /// The circle is on the wall on this side of the meter, not the side the card asks about.
+    case otherSide(WallSide)
+    case trackingNotReady
+}
+
 enum MarkRefusal: Equatable, Sendable {
     case noSurface
     case wrongSide
@@ -867,6 +878,10 @@ final class ScanViewState {
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
     var endPreview: EndPreview?
+    /// Why the last "Wall ends here" at the circle marked nothing, while the walk still asks for
+    /// that end. Cleared once the circle is on the asked end (`EndPreview` at the reticle on that
+    /// side), when an end is set, or when the walk asks for something else.
+    var endMarkRefusal: EndMarkRefusal?
     /// "Can't get there" came again on a walk card within `WalkRefusals.repeatWindow` of the one
     /// that last ended a side: the walk asks "End the scan here?" instead of ending this side too
     /// (#82). Answered by `answerEndScan`.
