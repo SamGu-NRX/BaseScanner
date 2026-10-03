@@ -398,7 +398,8 @@ def classify_process(process, kind, device=None):
         return "blocker"
     service = (Path(process["comm"]).name == "xcodebuild"
                and "test-without-building" in tokens
-               and SERVICE_TEST in option_values(tokens, "-only-testing"))
+               # -only-testing may repeat. Any other selected suite does heavy work of its own.
+               and set(option_values(tokens, "-only-testing")) == {SERVICE_TEST})
     if not service:
         return "blocker"
     destinations = []

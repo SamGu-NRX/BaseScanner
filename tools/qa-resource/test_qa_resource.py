@@ -1298,7 +1298,9 @@ class PureTests(unittest.TestCase):
     def test_xcodebuild_without_all_markers_blocks(self):
         for args in ("xcodebuild", f"xcodebuild -only-testing {qa.SERVICE_TEST}",
                      "xcodebuild test-without-building -only-testing WrongTest",
-                     f"xcodebuild test-without-building echo {qa.SERVICE_TEST}"):
+                     f"xcodebuild test-without-building echo {qa.SERVICE_TEST}",
+                     f"xcodebuild test-without-building -only-testing {qa.SERVICE_TEST} -only-testing OtherUITests",
+                     f"xcodebuild test-without-building -only-testing:OtherUITests -only-testing:{qa.SERVICE_TEST}"):
             self.assertEqual(qa.classify_process(dict(comm="xcodebuild", args=args), "package"), "blocker")
         self.assertEqual(qa.classify_process(dict(comm="swift-build", args="", stat="Z"), "package"), "irrelevant")
         self.assertEqual(qa.classify_process(dict(comm="/Applications/T3 Code App", args="blender"), "package"), "irrelevant")
