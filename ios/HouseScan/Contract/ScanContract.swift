@@ -669,6 +669,9 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     /// on the cable run): a measurement that doesn't clear it needs review even within the limit.
     /// Nil when the answer has none.
     var reviewThreshold: Float? = nil
+    /// True when `reviewThreshold` explains this unsure check, so the card names it
+    /// (`PlacementCheck.reviewBandApplies`, decided in the server's feet before conversion).
+    var reviewBandApplies = false
     /// The `MissingEvidence.id` of the first view that would settle this check, when the server
     /// named one.
     var settledBy: String? = nil

@@ -732,23 +732,10 @@ enum ScanCopy {
     }
 
     /// "anything over 15 ft" under a maximum, "anything under 4 ft" over a minimum: the side of the
-    /// check's review line that needs review. Nil unless `ResultReading.reviewBandApplies` says
-    /// the line explains this check's outcome.
+    /// check's review line that needs review. Nil unless the line explains this check's outcome
+    /// (`CheckRow.reviewBandApplies`).
     static func reviewBand(_ row: CheckRow, length: (Float) -> String = Distance.feetAndInches) -> String? {
-        guard let review = row.reviewThreshold, let comparison = row.comparison else { return nil }
-        let outcome: PlacementOutcome = switch row.outcome {
-        case .pass: .pass
-        case .fail: .fail
-        case .unsure: .unsure
-        }
-        let direction: PlacementComparison = switch comparison {
-        case .atLeast: .atLeast
-        case .atMost: .atMost
-        }
-        guard ResultReading.reviewBandApplies(
-            outcome: outcome, measured: row.measured.map(Double.init), plusMinus: row.plusMinus.map(Double.init),
-            threshold: row.threshold.map(Double.init), reviewThreshold: Double(review), comparison: direction)
-        else { return nil }
+        guard row.reviewBandApplies, let review = row.reviewThreshold, let comparison = row.comparison else { return nil }
         return switch comparison {
         case .atMost: "anything over \(length(review))"
         case .atLeast: "anything under \(length(review))"

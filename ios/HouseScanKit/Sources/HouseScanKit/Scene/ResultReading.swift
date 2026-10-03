@@ -137,6 +137,15 @@ extension PlacementCheck {
         guard let unsureCause else { return true }
         return unsureCause != .unobserved
     }
+
+    /// `ResultReading.reviewBandApplies` on this check's values as the server sent them, in feet.
+    /// Read it here, before any conversion: a run of 14.5 ft ± 6 in reaches the 15 ft line
+    /// exactly, and the same values narrowed to Float meters fell just short of it.
+    public var reviewBandApplies: Bool {
+        ResultReading.reviewBandApplies(
+            outcome: outcome, measured: measuredFt, plusMinus: plusMinusFt, threshold: thresholdFt,
+            reviewThreshold: reviewThresholdFt, comparison: comparison)
+    }
 }
 
 extension PlacementResult {

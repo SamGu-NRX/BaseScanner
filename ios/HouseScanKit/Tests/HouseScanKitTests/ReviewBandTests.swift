@@ -106,12 +106,29 @@ import Testing
             let result = try PlacementResult.decode(Data(contentsOf: Self.uiResultFile(file)))
             let route = try #require(result.checks.first { $0.id == "route_length" })
             #expect(route.reviewThresholdFt == 15, "\(file)")
-            return ResultReading.reviewBandApplies(
-                outcome: route.outcome, measured: route.measuredFt, plusMinus: route.plusMinusFt,
-                threshold: route.thresholdFt, reviewThreshold: route.reviewThresholdFt, comparison: route.comparison)
+            return route.reviewBandApplies
         }
         #expect(try applies("review-band"))
         #expect(try !applies("no-clean-spot"))
+    }
+
+    /// A decoded check decides in the server's feet. 14.5 ft ± 6 in reaches the 15 ft line
+    /// exactly; narrowed to Float meters first, the sum fell just under the line and the card
+    /// left the review line out.
+    @Test func aCheckDecidesInTheServersFeet() throws {
+        var object = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: Self.uiResultFile("review-band"))) as? [String: Any])
+        var checks = try #require(object["checks"] as? [[String: Any]])
+        let index = try #require(checks.firstIndex { $0["id"] as? String == "route_length" })
+        checks[index]["measured_ft"] = 14.5
+        object["checks"] = checks
+        let data = try JSONSerialization.data(withJSONObject: object)
+        #expect(try SceneSchemas.result().validate(data) == [])
+        let route = try #require(try PlacementResult.decode(data).checks.first { $0.id == "route_length" })
+        #expect(route.reviewBandApplies)
+        // The Float meters the app shows would not have reached it.
+        let meters = { (feet: Double) in Double(Float(feet * 0.3048)) }
+        #expect(meters(14.5) + meters(0.5) < meters(15))
     }
 
     private static func uiResultFile(_ name: String, file: String = #filePath) -> URL {
