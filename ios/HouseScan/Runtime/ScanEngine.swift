@@ -192,6 +192,9 @@ final class ScanEngine {
     private var uploadTask: Task<Void, Never>?
     /// The current upload's scene has fixed its ground; keep this true through answer pacing.
     private var scenePackaged = false
+    /// The server's answers House Scan couldn't use since this scan was last sent from the review
+    /// or a gap; "Try again" keeps counting, and a usable answer starts again at 0.
+    private var unusableAnswers = 0
     private(set) var placement: PlacementResult?
     /// Whether a ground change took the answer down and no answer has been shown since
     /// (`answerAfter(_:)`).
@@ -514,7 +517,7 @@ final class ScanEngine {
         case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest: true
         case .uploading:
             switch state.upload {
-            case .failed, .rejected: false
+            case .failed, .rejected, .unusableAnswer: false
             case .idle, .packaging, .uploading, .analyzing, .done: true
             }
         case .onboarding, .spotConfirm, .result, .resultAR, .unsupported: false
@@ -1675,7 +1678,7 @@ final class ScanEngine {
         let screen: GroundFreshness.Screen = switch state.phase {
         case .uploading:
             switch state.upload {
-            case .failed, .rejected: .stopped
+            case .failed, .rejected, .unusableAnswer: .stopped
             case .idle, .packaging, .uploading, .analyzing, .done: .sending
             }
         case .spotConfirm: .spotCheck
@@ -1999,6 +2002,8 @@ final class ScanEngine {
 
     func startUpload() {
         scenePackaged = false
+        // "Try again" sends from the upload screen; anything else is a new send of this scan.
+        if state.phase != .uploading { unusableAnswers = 0 }
         go(.uploading)
         injectGroundForTest()
         uploadTask?.cancel()
@@ -2080,6 +2085,7 @@ final class ScanEngine {
                 guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
             }
             placement = result
+            unusableAnswers = 0
             noteExchange(scene: scene, answer: data, packet: packaged.packet)
             writeScanStamp(answer: result)
             state.result = presentation(of: result, isSample: resultClient.isSample)
@@ -2111,7 +2117,7 @@ final class ScanEngine {
             // failure the canceller already shows.
             guard scan == generation, !Task.isCancelled else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
-            state.upload = UploadFailure.state(for: error)
+            state.upload = UploadFailure.state(for: error, sample: resultClient.isSample, unusableAnswers: &unusableAnswers)
             updateRecording()
         }
     }

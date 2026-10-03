@@ -627,10 +627,14 @@ enum UploadState: Equatable, Sendable {
     /// A network failure or a server error (5xx): sending again can work. `offline` means no
     /// connection at all.
     case failed(message: String, offline: Bool)
-    /// The server refused the scan (4xx), its answer couldn't be read, or the scan couldn't be
-    /// packaged. Sending again would send the same thing, so the way on is back to the review
-    /// or start over, never "Try again".
+    /// The server refused the scan (4xx) or the scan couldn't be packaged. Sending again would send
+    /// the same thing, so the way on is back to the review or start over, never "Try again".
     case rejected(message: String)
+    /// The server answered, but House Scan couldn't use the answer: it didn't decode, or it didn't
+    /// name the scene sent. It isn't shown. The scan isn't at fault, so the way on is "Try again",
+    /// with sharing the scan or starting over for when asking again doesn't help. `attempts` counts
+    /// such answers since the scan was sent from the review or a gap, at least 1.
+    case unusableAnswer(attempts: Int)
     case done
 }
 

@@ -21,6 +21,8 @@ final class DemoEngine: ScanActions {
     /// through the engine's own mapping, in place of the hand-made samples.
     private let resultFile: String?
     private let rejectUpload: Bool
+    /// `-uiDemoUnusableAnswer <n>`: how many answers in a row House Scan can't use; 0 when off.
+    private let unusableAnswers: Int
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
     /// The tilt-up step was answered or skipped.
@@ -51,6 +53,7 @@ final class DemoEngine: ScanActions {
     private var spotChecked = false
     private var failedUploads = 0
     private var rejectedUploads = 0
+    private var answersUnused = 0
 
     private static let cellWidth: Float = 0.1524
     /// Where the demo wall ends on each side, meters of s. Following a corner moves the end on.
@@ -76,6 +79,7 @@ final class DemoEngine: ScanActions {
         resultFile = nil
         #endif
         rejectUpload = arguments.contains("-uiDemoRejected")
+        unusableAnswers = arguments.contains("-uiDemoUnusableAnswer") ? max(value("-uiDemoUnusableAnswer").flatMap(Int.init) ?? 1, 1) : 0
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
         state.isReplay = true
@@ -199,11 +203,13 @@ final class DemoEngine: ScanActions {
         }
         // Frozen, the upload script never runs, so show where it would end.
         if freeze, state.phase == .uploading {
-            if rejectUpload || offline {
+            if rejectUpload || offline || unusableAnswers > 0 {
                 state.shareableScan = Self.demoScan
             }
             if rejectUpload {
                 state.upload = .rejected(message: Self.rejection)
+            } else if unusableAnswers > 0 {
+                state.upload = .unusableAnswer(attempts: unusableAnswers)
             } else if offline {
                 state.upload = .failed(message: "No internet connection.", offline: true)
             }
@@ -541,6 +547,12 @@ final class DemoEngine: ScanActions {
         if rejectUpload, rejectedUploads == 0 {
             rejectedUploads += 1
             state.upload = .rejected(message: Self.rejection)
+            return
+        }
+        // An answer the engine couldn't use; "Try again" asks again.
+        if answersUnused < unusableAnswers {
+            answersUnused += 1
+            state.upload = .unusableAnswer(attempts: answersUnused)
             return
         }
         // Like the real engine: an answer that lists a view the camera can take goes back to
