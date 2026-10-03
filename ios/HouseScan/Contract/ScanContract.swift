@@ -555,7 +555,7 @@ enum NextWallRefusal: Equatable, Sendable {
 
 /// Why "Wall ends here" at the circle marked no end (`ScanViewState.endMarkRefusal`). Before,
 /// the button did nothing at all in each case, and nothing said why (B-06).
-enum EndMarkRefusal: Equatable, Sendable {
+enum EndMarkRefusal: Error, Equatable, Sendable {
     /// The circle isn't on the wall within the distance a camera's view counts for
     /// (`CoverageConfig.maxDistance`): on the ground, the sky, or far down a long wall.
     case noWall
