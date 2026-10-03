@@ -111,7 +111,7 @@ final class SpotConfirmUITests: XCTestCase {
                 let button = app.buttons[id]
                 XCTAssertTrue(button.waitForExistence(timeout: 10), "\(variant.name): \(id) is missing")
                 XCTAssertEqual(button.label, title, "\(variant.name): \(id)")
-                for _ in 0..<8 where !button.isHittable { app.scrollViews.firstMatch.swipeUp(velocity: .slow) }
+                Self.scrollOnScreen(button, in: app)
                 XCTAssertTrue(button.isHittable, "\(variant.name): \(id) can't be tapped")
                 XCTAssertTrue(window.contains(button.frame), "\(variant.name): \(id) at \(button.frame) isn't on screen in \(window)")
                 // Apple's minimum target, whatever the text size.
@@ -159,11 +159,9 @@ final class SpotConfirmUITests: XCTestCase {
             let app = launchResult(answer: "cannotCheck", extra)
             let notice = element(app, "result.spotNotChecked")
             XCTAssertTrue(notice.waitForExistence(timeout: 10), "\(name): no notice")
-            let window = app.windows.firstMatch.frame
-            for _ in 0..<10 where !window.contains(notice.frame) { app.scrollViews.firstMatch.swipeUp(velocity: .slow) }
-            let read = ElementRead.snapshot(notice)
-            XCTAssertEqual(read?.label, notChecked, name)
-            XCTAssertTrue(window.contains(read?.frame ?? .zero), "\(name): the notice at \(read?.frame ?? .zero) can't be scrolled onto the screen")
+            // At AX5 the notice sits below the answer card; the homeowner scrolls to read it.
+            XCTAssertTrue(Self.canBeReadByScrolling(notice, in: app), "\(name): the notice at \(notice.frame) can't be scrolled onto the screen in \(app.windows.firstMatch.frame)")
+            XCTAssertEqual(ElementRead.snapshot(notice)?.label, notChecked, name)
             XCTAssertFalse(element(app, "result.spotRefused").exists, "\(name): the result says something stands there")
             attach(app, name: name)
             let outcome = try AccessibilityAudit.run(app) { _ in Thread.sleep(forTimeInterval: 6) }
@@ -267,6 +265,33 @@ final class SpotConfirmUITests: XCTestCase {
             let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: drag)), withVelocity: .slow, thenHoldForDuration: 0.3)
         }
+    }
+
+    /// Whether every line of `element` can be brought on screen. One that fits the window is
+    /// scrolled wholly onto it (`scrollOnScreen`). A taller one, such as a long notice at AX5, is
+    /// read the way a homeowner would: its top edge is scrolled on screen, then its bottom edge.
+    @MainActor
+    static func canBeReadByScrolling(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        let window = app.windows.firstMatch.frame
+        guard element.frame.height > window.height else {
+            scrollOnScreen(element, in: app)
+            return window.contains(element.frame)
+        }
+        let scroll = app.scrollViews.firstMatch
+        func drag(_ distance: CGFloat) {
+            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: distance)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+        let most = window.height * 0.6
+        for _ in 0..<10 where element.frame.minY > window.maxY - 24 || element.frame.minY < window.minY {
+            let top = element.frame.minY
+            drag(top > window.minY ? -min(top - window.minY - 24, most) : min(window.minY - top + 24, most))
+        }
+        guard window.minY...window.maxY ~= element.frame.minY else { return false }
+        for _ in 0..<10 where element.frame.maxY > window.maxY {
+            drag(-min(element.frame.maxY - window.maxY + 24, most))
+        }
+        return window.minY...window.maxY ~= element.frame.maxY
     }
 
     /// A server answer in Fixtures/results, which the demo reads in debug builds.
