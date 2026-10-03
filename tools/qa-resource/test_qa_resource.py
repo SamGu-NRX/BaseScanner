@@ -77,13 +77,13 @@ class TestPopen(q.subprocess.Popen):
                 and args[2].startswith('import sys; sys.path.insert(0, sys.argv[1]); import qa_resource as q; sys.exit(q.resume(')):
             args = list(args)
             settings = ('q.OWNER_ENV_PREFIX=' + repr(q.OWNER_ENV_PREFIX) + '; '
-                        'q.CLEANUP_GRACE_SECONDS=.2; q.RESAMPLE_SECONDS=.1; ')
+                        'q.CLEANUP_GRACE_SECONDS=.2; q.RESAMPLE_SECONDS=.1; q.CLEANUP_HOLD_SECONDS=1; ')
             args[2] = args[2].replace('import qa_resource as q; ', 'import qa_resource as q; ' + settings)
         super().__init__(args, *positional, **keywords)
 q.subprocess.Popen = TestPopen
 '''
 BOOTSTRAP = ("import sys; sys.path.insert(0, sys.argv[1]); import qa_resource as q; "
-             "q.CLEANUP_GRACE_SECONDS=.2; q.RESAMPLE_SECONDS=.1; "
+             "q.CLEANUP_GRACE_SECONDS=.2; q.RESAMPLE_SECONDS=.1; q.CLEANUP_HOLD_SECONDS=1; "
              "sys.exit(q.main(sys.argv[2:]))")
 
 
@@ -282,19 +282,33 @@ class QueueTests(unittest.TestCase):
             parent += "time.sleep(30)\n"
         return parent
 
+    def stop_test_escapee(self, pid):
+        start = dict(self.escaped_targets)[pid]
+        identity = qa.process_identity(pid, details=True)
+        if identity and identity["start"] == start and not identity["stat"].startswith("Z"):
+            os.kill(pid, signal.SIGKILL)  # Only a PID this test spawned and recorded.
+        deadline = time.monotonic() + 3
+        while not self.escaped_gone(pid):
+            if time.monotonic() >= deadline:
+                self.fail(f"test escapee {pid} did not exit")
+            time.sleep(.02)
+
     def escaped_gone(self, pid):
         identity = qa.process_identity(pid, details=True)
         return identity is None or identity["stat"].startswith("Z")
 
     def assert_escaped_result(self, job, expected):
+        """Escapees are reported, never signalled, and their job never claims clean cleanup."""
+        self.assertEqual((job["status"], job["exitCode"]), ("cleanup_failed", 125))
         records = {p["pid"]: p for p in job["escapedProcesses"]}
         self.assertEqual(set(records), set(expected))
-        for pid, (proof, outcome) in expected.items():
+        for pid, proof in expected.items():
             self.assertEqual(records[pid]["proof"], proof)
-            self.assertEqual(records[pid]["outcome"], outcome)
+            self.assertEqual(records[pid]["outcome"], "retained")
             self.assertTrue(records[pid]["start"])
             self.assertTrue(records[pid]["comm"])
-            self.assertTrue(self.escaped_gone(pid), records[pid])
+            self.assertFalse(self.escaped_gone(pid), records[pid])
+            self.assertIn(f"PID {pid} ", job["cleanupError"])
         log = Path(job["logs"]["runner"]).read_text()
         self.assertIn('"escapedProcesses"', log)
         self.assert_lock_free()
@@ -310,21 +324,20 @@ class QueueTests(unittest.TestCase):
             self.assertEqual(identity["ppid"], 1)
             self.assertEqual(identity["pgid"], pid)
         self.assertEqual(self.invoke(self.cli("cancel", "escape-cancel")).returncode, 0)
-        result = self.finish(runner, "escape-cancel", 130)
-        self.assert_escaped_result(result, {pids[0]: ("token", "terminated"), pids[1]: ("token", "killed")})
+        result = self.finish(runner, "escape-cancel", 125)
+        self.assert_escaped_result(result, {pids[0]: "token", pids[1]: "token"})
         self.assertIsNone(sentinel.poll())
 
-    def test_timeout_kills_escaped_ignoring_descendant_not_sentinel(self):
+    def test_timeout_retains_escaped_descendant_and_spares_sentinel(self):
         sentinel = self.sleeper(30)
         path = self.root / "escaped"
         runner = self.launch(self.job_args("escape-timeout", self.escape_program([path], [True]), timeout=.8))
         pid = self.escaped_pid(path)
-        result = self.finish(runner, "escape-timeout", 124)
-        self.assertEqual(result["status"], "timed_out")
-        self.assert_escaped_result(result, {pid: ("token", "killed")})
+        result = self.finish(runner, "escape-timeout", 125)
+        self.assert_escaped_result(result, {pid: "token"})
         self.assertIsNone(sentinel.poll())
 
-    def test_natural_exit_cleans_detached_helper_before_lock_release(self):
+    def test_natural_exit_holds_lock_and_reports_live_detached_helper(self):
         path = self.root / "escaped"
         runner = self.launch(self.job_args("escape-natural", self.escape_program([path], [True], parent_live=False)))
         pid = self.escaped_pid(path)
@@ -333,15 +346,15 @@ class QueueTests(unittest.TestCase):
             while True:
                 try:
                     fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    self.assertTrue(self.escaped_gone(pid), "escaped helper lived past lock release")
+                    # Released only after the hold; the helper is still running and reported.
+                    self.assertFalse(self.escaped_gone(pid), "the queue must not stop an escaped helper")
                     break
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
                         self.fail("natural-exit cleanup did not release the test lock")
                     time.sleep(.01)
-        result = self.finish(runner, "escape-natural", 0)
-        self.assertEqual(result["status"], "succeeded")
-        self.assert_escaped_result(result, {pid: ("token", "killed")})
+        result = self.finish(runner, "escape-natural", 125)
+        self.assert_escaped_result(result, {pid: "token"})
 
     def test_tokenless_session_descendant_is_owned_by_live_ancestry(self):
         path = self.root / "ancestry"
@@ -351,21 +364,19 @@ class QueueTests(unittest.TestCase):
         self.assertFalse(any(entry.startswith(TEST_OWNER_PREFIX) for entry in qa.process_env(pid)))
         self.assertNotEqual(qa.process_identity(pid, details=True)["ppid"], 1)
         self.assertEqual(self.invoke(self.cli("cancel", "escape-ancestry")).returncode, 0)
-        result = self.finish(runner, "escape-ancestry", 130)
-        self.assert_escaped_result(result, {pid: ("ancestry", "killed")})
+        result = self.finish(runner, "escape-ancestry", 125)
+        self.assert_escaped_result(result, {pid: "ancestry"})
 
-    def test_ineffective_escaped_kill_records_retained_and_holds_lock(self):
+    def test_escaped_descendant_is_never_signalled_and_holds_lock(self):
         path = self.root / "retained"
         args = Mock(state_dir=self.state, job_id="retained", kind="package",
                     argv=[sys.executable, "-c", self.escape_program([path], [True], parent_live=False)],
                     cwd=self.root, device=None, admission_deadline=5, timeout=3)
         directory, live, job = qa.create_job(args)
-        real_kill, real_sleep = os.kill, time.sleep
-        held = []
-        def ineffective(pid, sig):
-            if path.exists() and pid == int(path.read_text()):
-                return None
-            return real_kill(pid, sig)
+        real_sleep = time.sleep
+        held, kills = [], []
+        def no_kill(pid, sig):
+            kills.append((pid, sig))  # Recorded, never delivered: no PID is signalled here.
         def observe_hold(seconds):
             if qa.read_job(directory)["status"] == "cleanup_failed":
                 with self.lock.open("a+") as probe:
@@ -380,11 +391,12 @@ class QueueTests(unittest.TestCase):
              patch.object(qa, "CLEANUP_GRACE_SECONDS", .1), \
              patch.object(qa, "CLEANUP_CONFIRM_SECONDS", .1), \
              patch.object(qa, "CLEANUP_HOLD_SECONDS", .2), \
-             patch.object(qa.os, "kill", side_effect=ineffective), \
+             patch.object(qa.os, "kill", side_effect=no_kill), \
              patch.object(qa.time, "sleep", side_effect=observe_hold):
             self.assertEqual(qa.run_job(directory, live, job, self.lock, echo=False), 125)
         pid = self.escaped_pid(path)
         result = qa.read_job(directory)
+        self.assertEqual(kills, [])
         self.assertEqual(result["status"], "cleanup_failed")
         self.assertTrue(held)
         self.assertIn(str(pid), result["cleanupError"])
@@ -409,6 +421,25 @@ class QueueTests(unittest.TestCase):
         self.assertIsNone(orphan.poll())
         self.assertIsNone(result["childPgid"])
         self.assert_lock_free()
+
+    def test_live_retained_escapee_blocks_admission_and_is_never_signalled(self):
+        escapee = self.sleeper(30)
+        identity = qa.kernel_identity(escapee.pid)
+        earlier = self.state / "jobs" / "earlier"
+        earlier.mkdir(parents=True)
+        record = dict(pid=escapee.pid, start_us=identity["start_us"], uid=identity["uid"],
+                      start="test", comm="sleeper", proof="ancestry", outcome="retained")
+        (earlier / "job.json").write_text(json.dumps(dict(jobId="earlier", childPgid=None, escapedProcesses=[record])))
+        runner = self.launch(self.job_args("after-retained", deadline=1))
+        self.await_job("after-retained", lambda j: any(f"retained process {escapee.pid}" in r for r in j["reasons"]))
+        result = self.finish(runner, "after-retained", 75)
+        self.assertEqual(result["status"], "admission_timeout")
+        self.assertIsNone(escapee.poll())
+        # A record whose execution is gone, here a different start time, no longer blocks.
+        record["start_us"] += 1
+        (earlier / "job.json").write_text(json.dumps(dict(jobId="earlier", childPgid=None, escapedProcesses=[record])))
+        self.assertEqual(self.finish(self.launch(self.job_args("after-gone")), "after-gone", 0)["status"], "succeeded")
+        self.assertIsNone(escapee.poll())
 
     def test_token_bearing_ancestor_is_excluded_when_runner_has_no_token(self):
         outer_name = TEST_OWNER_PREFIX + secrets.token_hex(16)
@@ -455,8 +486,8 @@ class QueueTests(unittest.TestCase):
         pid = self.escaped_pid(path)
         self.assertFalse(any(entry.startswith(TEST_OWNER_PREFIX) for entry in qa.process_env(pid)))
         self.assertEqual(self.invoke(self.cli("cancel", "durable-ancestry")).returncode, 0)
-        result = self.finish(runner, "durable-ancestry", 130)
-        self.assert_escaped_result(result, {pid: ("ancestry", "killed")})
+        result = self.finish(runner, "durable-ancestry", 125)
+        self.assert_escaped_result(result, {pid: "ancestry"})
         self.assertGreater(result["escapedProcesses"][0]["start_us"], 0)
         self.assertIsNone(sentinel.poll())
 
@@ -476,8 +507,11 @@ class QueueTests(unittest.TestCase):
                     entry = qa.owner_entry(self.job(name))
                     self.assertIn(entry, qa.process_env(pid))
                     self.assertEqual(self.invoke(self.cli("cancel", name)).returncode, 0)
-                result = self.finish(runner, name, 0 if natural else 130)
-                self.assert_escaped_result(result, {pid: ("token", "terminated")})
+                result = self.finish(runner, name, 125)
+                self.assert_escaped_result(result, {pid: "token"})
+                # A live retained escapee blocks the next admission by design; stop this
+                # test-spawned one before the next subtest.
+                self.stop_test_escapee(pid)
 
     def test_failed_discovery_still_term_and_kills_pinned_group_and_holds_lock(self):
         code = "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(30)"
@@ -1080,17 +1114,24 @@ class OwnershipTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "malformed lstart/comm"):
                 qa.process_identity(123)
 
-    def test_changed_microsecond_start_uid_and_zombie_never_receive_signal(self):
-        identity = dict(pid=123, start_us=123_000_001, uid=os.getuid(),
-                        start="old", comm="python", proof="token")
-        current = dict(pid=123, start_us=identity["start_us"], uid=os.getuid(), zombie=False)
-        for changes in (dict(start_us=123_000_002), dict(uid=os.getuid() + 1), dict(zombie=True)):
-            with self.subTest(changes=changes), \
-                 patch.object(qa, "kernel_identity", return_value=dict(current, **changes)), \
-                 patch.object(qa.os, "kill") as kill, patch.object(qa.os, "killpg") as killpg:
-                self.assertFalse(qa.signal_owned_process(identity, signal.SIGKILL))
-                kill.assert_not_called()
-                killpg.assert_not_called()
+    def test_cleanup_signals_only_the_pinned_group_and_reports_escapees(self):
+        escaped = dict(pid=124, pgid=124, ppid=1, stat="S", uid=os.getuid(), start_us=124_000_001,
+                       start="escapee-start", comm="helper", proof="token")
+        member = dict(escaped, pid=125, pgid=123, start_us=125_000_001, comm="member")
+        child = Mock(pid=123)
+        with patch.object(qa, "owned_processes", return_value=[escaped, member]), \
+             patch.object(qa, "kernel_identity", side_effect=lambda pid: dict(pid=pid, start_us=pid * 1_000_000 + 1,
+                                                                             uid=os.getuid(), ppid=1, zombie=False)), \
+             patch.object(qa, "group_has_members", return_value=False), \
+             patch.object(qa, "CLEANUP_GRACE_SECONDS", .05), \
+             patch.object(qa, "CLEANUP_CONFIRM_SECONDS", .05), \
+             patch.object(qa.os, "kill", side_effect=AssertionError("an escaped PID was signalled")), \
+             patch.object(qa.os, "killpg") as killpg:
+            with self.assertRaisesRegex(RuntimeError, "live members remained; retained: PID 124 \\(helper\\)"):
+                qa.stop_owned_command(child)
+        self.assertEqual(killpg.call_args_list[0].args, (123, signal.SIGTERM))
+        self.assertTrue(all(call.args[0] == 123 for call in killpg.call_args_list))
+        child.wait.assert_not_called()  # The leader stays unreaped, pinning the group id.
 
     def test_token_match_is_exact_and_unreadable_nonancestry_is_not_owned(self):
         job = dict(jobId="job", ownerToken="a" * 32)
@@ -1117,11 +1158,6 @@ class OwnershipTests(unittest.TestCase):
             found = qa.owned_processes(job, 123)
         self.assertEqual([(p["pid"], p["proof"]) for p in found], [(123, "ancestry"), (124, "ancestry")])
         env.assert_called_once_with(123)
-        with patch.object(qa, "kernel_identity", return_value=dict(found[1], zombie=False)), \
-             patch.object(qa, "process_env") as env, patch.object(qa.os, "kill") as kill:
-            self.assertFalse(qa.signal_owned_process(found[1], signal.SIGTERM))
-            env.assert_not_called()
-            kill.assert_not_called()
 
     def test_kernel_identity_reports_the_real_parent(self):
         self.assertEqual(qa.kernel_identity(os.getpid())["ppid"], os.getppid())
@@ -1177,17 +1213,6 @@ class OwnershipTests(unittest.TestCase):
              patch.object(qa, "kernel_identity", side_effect=kernel), \
              patch.object(qa, "process_identity", side_effect=lambda pid, **unused: dict(pid=pid, start="date", comm="python")):
             self.assertEqual([p["pid"] for p in qa.owned_processes(job, 123)], [123])
-
-    def test_proven_identity_survives_lost_token_and_reparenting(self):
-        identity = dict(pid=124, uid=os.getuid(), start_us=124_000_001,
-                        start="child-start", comm="python", proof="ancestry")
-        with patch.object(qa, "kernel_identity", return_value=dict(identity, zombie=False)), \
-             patch.object(qa, "process_identity") as ps, \
-             patch.object(qa, "process_env", return_value=[]) as env, patch.object(qa.os, "kill") as kill:
-            self.assertTrue(qa.signal_owned_process(identity, signal.SIGTERM))
-            env.assert_not_called()
-            ps.assert_not_called()
-            kill.assert_called_once_with(124, signal.SIGTERM)
 
     def test_kernel_start_microseconds_agree_with_live_ps_lstart(self):
         identity = qa.kernel_identity(os.getpid())
@@ -1282,14 +1307,14 @@ class OwnershipTests(unittest.TestCase):
         def sleep(seconds):
             clock[0] += seconds + .001
         with patch.object(owned, "snapshot", side_effect=sequence) as snapshots, \
-             patch.object(owned, "signal") as signal_owned, \
              patch.object(qa, "group_has_members", return_value=False), \
+             patch.object(qa.os, "kill", side_effect=AssertionError("confirmation signalled a PID")), \
+             patch.object(qa.os, "killpg", side_effect=AssertionError("confirmation signalled a group")), \
              patch.object(qa.time, "monotonic", side_effect=lambda: clock[0]), \
              patch.object(qa.time, "sleep", side_effect=sleep):
             qa.confirm_owned_exit(child, owned, 1)
         self.assertEqual(snapshots.call_count, 7)
         self.assertGreaterEqual(clock[0], .6)
-        self.assertEqual(signal_owned.call_args_list[0].args, ([previous], signal.SIGKILL))
         clock[0] = 0
         with patch.object(owned, "snapshot", return_value=([], False)), \
              patch.object(qa, "group_has_members", return_value=False), \

@@ -374,19 +374,32 @@ def owner_blockers():
     return pids, reasons
 
 
-def signal_owned_process(identity, signum):
-    """Ownership proof survives reparenting; recheck the exact proven identity."""
-    current = kernel_identity(identity["pid"])
-    if (current is None or current["start_us"] != identity["start_us"]
-            or current["uid"] != identity["uid"] or current["uid"] != os.getuid()
-            or current["zombie"]):
-        return False
-    try:
-        # Microsecond identity prevents coarse lstart reuse, not this final race.
-        os.kill(current["pid"], signum)
-        return True
-    except (ProcessLookupError, PermissionError):
-        return False
+def retained_blockers(jobs_dir, job_id):
+    """Escapees an earlier job could not see exit, while that exact execution still lives.
+
+    Escaped processes are reported, never signalled, so admission waits for them instead.
+    A token-bearing escapee is also caught by owner_blockers; this covers one proven only by
+    ancestry, which carries no token. A record whose identity no longer matches is gone.
+    """
+    pids, reasons = [], []
+    for record_path in sorted(jobs_dir.glob("*/job.json")):
+        if record_path.parent.name == job_id:
+            continue
+        try:
+            records = json.loads(record_path.read_text()).get("escapedProcesses") or []
+        except (OSError, ValueError) as error:
+            reasons.append(f"cannot read retained processes in {record_path}: {error}")
+            continue
+        for record in records:
+            if record.get("outcome") != "retained":
+                continue
+            current = kernel_identity(record["pid"])
+            if (current is not None and not current["zombie"]
+                    and current["start_us"] == record["start_us"] and current["uid"] == record["uid"]):
+                pids.append(record["pid"])
+                reasons.append(f"retained process {record['pid']} ({record.get('comm', '?')}) "
+                               f"from job {record_path.parent.name} is still alive")
+    return pids, reasons
 
 
 def list_processes():
@@ -539,7 +552,7 @@ class OwnedProcesses:
     """Keep discovery proof attached to an exact identity until that execution ends."""
     def __init__(self, job, child_pid, report=None):
         self.job, self.child_pid, self.report = job, child_pid, report
-        self.identities, self.sent, self.escaped = {}, {}, {}
+        self.identities, self.escaped = {}, {}
         self.errors = []
         self.last_incomplete = None
         self.saw_owned = False
@@ -594,10 +607,7 @@ class OwnedProcesses:
                 current.pop(key)
                 self.identities.pop(key)
                 if key in self.escaped:
-                    outcome = {signal.SIGTERM: "terminated", signal.SIGKILL: "killed"}.get(
-                        self.sent.get(key), "exited")
-                    self.record(previous, outcome)
-                self.sent.pop(key, None)
+                    self.record(previous, "exited")
         for key, identity in current.items():
             self.identities[key] = identity
             if identity["pgid"] != self.child_pid and key not in self.escaped:
@@ -607,17 +617,6 @@ class OwnedProcesses:
             self.last_incomplete = "inspection deadline expired; completeness uncertain"
         self.saw_owned = bool(observed) or bool(current)
         return list(current.values()), complete
-
-    def signal(self, identities, signum):
-        for identity in identities:
-            key = identity_key(identity)
-            if identity["pgid"] == self.child_pid or self.sent.get(key) == signum:
-                continue
-            try:
-                if signal_owned_process(identity, signum):
-                    self.sent[key] = signum
-            except Exception as error:
-                self.error(f"signal escaped PID {identity['pid']}: {error}")
 
     def retained(self, identities):
         for identity in identities:
@@ -643,7 +642,7 @@ def owned_state(child, owned, deadline):
     return remaining, group_live, complete
 
 
-def confirm_owned_exit(child, owned, deadline, escalate=True, poll_seconds=.1):
+def confirm_owned_exit(child, owned, deadline, poll_seconds=.1):
     empty_at = None
     while True:
         remaining, group_live, complete = owned_state(child, owned, deadline)
@@ -654,8 +653,6 @@ def confirm_owned_exit(child, owned, deadline, escalate=True, poll_seconds=.1):
             empty_at = now if empty_at is None else empty_at
         else:
             empty_at = None
-            if escalate:
-                owned.signal(remaining, signal.SIGKILL)
         if now >= deadline:
             retained = owned.retained(remaining)
             raise RuntimeError("completeness uncertain; "
@@ -676,10 +673,11 @@ def stop_owned_command(child, owned=None):
     remaining, complete = owned.snapshot(time.monotonic() + SENSING_TIMEOUT)
     if not complete:
         owned.error("initial discovery incomplete: " + (owned.last_incomplete or "unknown reason"))
-    # Signal discovered escapes first. Their identity stays proven even if their
-    # parents die on the group SIGTERM and launchd adopts them immediately.
-    owned.signal(remaining, signal.SIGTERM)
-    # Discovery failures must never skip either signal to the pinned group.
+    # Discover escapes before the group SIGTERM, so their proof is recorded before their
+    # parents die and launchd adopts them. They are reported, never signalled: a PID
+    # recheck followed by kill cannot rule out reuse in between, and macOS has no
+    # identity-bound signal. The group is safe to signal because its unreaped leader pins
+    # the group id. Discovery failures must never skip either signal to the group.
     try:
         signal_owned_group(child.pid, signal.SIGTERM)
     except Exception as error:
@@ -687,11 +685,9 @@ def stop_owned_command(child, owned=None):
     deadline = time.monotonic() + CLEANUP_GRACE_SECONDS
     while True:
         remaining, group_live, complete = owned_state(child, owned, deadline)
-        if complete and not group_live and not remaining:
-            break
-        owned.signal(remaining, signal.SIGTERM)
+        if complete and not group_live:
+            break  # Escapees are left to confirm_owned_exit, which reports them.
         if time.monotonic() >= deadline:
-            owned.signal(remaining, signal.SIGKILL)
             try:
                 signal_owned_group(child.pid, signal.SIGKILL)
             except Exception as error:
@@ -705,7 +701,7 @@ def stop_owned_command(child, owned=None):
             raise RuntimeError(f"{error}; " + "; ".join(owned.errors)) from error
         raise
     if owned.errors:
-        raise RuntimeError("cleanup discovery or signaling failed: " + "; ".join(owned.errors))
+        raise RuntimeError("cleanup discovery failed: " + "; ".join(owned.errors))
     # Never poll or reap before the final complete pass: the leader pins its pgid.
     return child.wait(timeout=CLEANUP_CONFIRM_SECONDS)
 
@@ -713,8 +709,7 @@ def stop_owned_command(child, owned=None):
 def hold_owned_group(child, owned=None):
     owned = owned if owned is not None else OwnedProcesses({}, child.pid)
     try:
-        confirm_owned_exit(child, owned, time.monotonic() + CLEANUP_HOLD_SECONDS,
-                           escalate=False, poll_seconds=1)
+        confirm_owned_exit(child, owned, time.monotonic() + CLEANUP_HOLD_SECONDS, poll_seconds=1)
         return "no live members remained when the shared QA lock was released"
     except Exception as error:
         return (f"{error} when the shared QA lock was released "
@@ -1019,6 +1014,9 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
                 reasons = resource_blockers(pressure, memory, sense_disk())
                 heavy, owner_reasons = owner_blockers()
                 reasons.extend(owner_reasons)
+                retained, retained_reasons = retained_blockers(directory.parent, job["jobId"])
+                heavy.extend(retained)  # Only waited on for exit, never signalled.
+                reasons.extend(retained_reasons)
                 ignored = []
                 for process in list_processes():
                     classification = classify_process(process, job["kind"], job["device"])
