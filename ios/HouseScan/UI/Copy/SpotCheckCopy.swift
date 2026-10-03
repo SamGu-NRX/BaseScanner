@@ -3,7 +3,7 @@ import Foundation
 /// The spot check's words (`SpotConfirmScreen`, and the guidance log's record of the question).
 extension ScanCopy {
     /// One question about the wall and the ground, with the reason for asking, when the area is
-    /// outlined on a photo. The guidance log records this text for every check.
+    /// outlined on a photo.
     static let spotQuestion = Instruction(
         title: "Is anything standing in the marked area?",
         detail: "Check the wall and the ground inside the blue outline. Photos can miss a low bush, a bin or a step."
@@ -17,6 +17,11 @@ extension ScanCopy {
         detail: "We couldn't mark this space on a photo, so take a look yourself. Check the wall and the ground for a low bush, a bin, a step or anything else."
     )
     static let spotSpaceTitle = "Where to look"
+
+    /// The question as shown (`SpotCheck.outline(on:)`), on screen and in the guidance log.
+    static func spotQuestionShown(outlined: Bool) -> Instruction {
+        outlined ? spotQuestion : spotQuestionInPerson
+    }
     static let spotClear = "It's clear"
     static let spotSomethingThere = "Something's there"
     static let spotClearHint = "Shows your result."

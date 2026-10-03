@@ -27,16 +27,9 @@ struct SpotConfirmScreen: View {
         }
     }
 
-    /// The photo and the wall to outline the area on it with, or nil when either is missing.
-    /// The question, the picture and what VoiceOver reads all follow this one answer.
-    private func outlinable(_ check: SpotCheck) -> (photo: SpotCheck.Photo, wall: WallGeometry)? {
-        guard let photo = check.photo, let wall = state.wall else { return nil }
-        return (photo, wall)
-    }
-
     private func content(_ check: SpotCheck) -> some View {
-        let outline = outlinable(check)
-        let question = outline == nil ? ScanCopy.spotQuestionInPerson : ScanCopy.spotQuestion
+        let outline = check.outline(on: state.wall)
+        let question = ScanCopy.spotQuestionShown(outlined: outline != nil)
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 badges(check)
@@ -149,34 +142,39 @@ struct SpotConfirmScreen: View {
             .accessibilityIdentifier("spot.photo")
     }
 
-    /// The area in words, in the photo's place: the three edges the outline would draw.
+    /// The area in words, in the photo's place: the three edges the outline would draw. Each
+    /// line is its own VoiceOver element, read with the units spelled out, so the rendered lines
+    /// stay visible to the accessibility audit and the UI tests.
     private func space(_ check: SpotCheck) -> some View {
-        let extents = ScanCopy.spotSpace(check)
+        let shown = ScanCopy.spotSpace(check)
+        let spoken = ScanCopy.spotSpace(check, spoken: true)
         return VStack(alignment: .leading, spacing: 10) {
             Label(ScanCopy.spotSpaceTitle, systemImage: "eye")
                 .font(Typeface.caption)
                 .foregroundStyle(Palette.muted)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("spot.area.title")
             VStack(alignment: .leading, spacing: 6) {
-                spaceLine(extents.along)
-                spaceLine(extents.out)
-                spaceLine(extents.up)
+                spaceLine(shown.along, spoken: spoken.along, id: "along")
+                spaceLine(shown.out, spoken: spoken.out, id: "out")
+                spaceLine(shown.up, spoken: spoken.up, id: "up")
             }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.surface, in: .rect(cornerRadius: Metrics.cardRadius, style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(ScanCopy.spotSpaceTitle)
-        .accessibilityValue(ScanCopy.spotSpaceSpoken(check))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("spot.area")
     }
 
     /// In the primary color, as the question: Ink stays near-black in dark mode, where Surface
     /// turns dark, and this screen follows the phone's appearance.
-    private func spaceLine(_ text: String) -> some View {
+    private func spaceLine(_ text: String, spoken: String, id: String) -> some View {
         Text(text)
             .font(Typeface.hint)
             .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel(spoken)
+            .accessibilityIdentifier("spot.area.\(id)")
     }
 
     /// The two answers, or once answered, what happens next.
@@ -203,6 +201,16 @@ struct SpotConfirmScreen: View {
         }
         .padding(12)
         .background(Palette.surface, in: .rect(cornerRadius: 18, style: .continuous))
+    }
+}
+
+extension SpotCheck {
+    /// The photo and the wall to outline the area on it with, or nil when either is missing.
+    /// The screen's question, picture and VoiceOver text follow this one answer, and so does
+    /// the guidance log's record of what was shown (`ScanEngine.presentAnswer`).
+    func outline(on wall: WallGeometry?) -> (photo: Photo, wall: WallGeometry)? {
+        guard let photo = self.photo, let wall else { return nil }
+        return (photo, wall)
     }
 }
 

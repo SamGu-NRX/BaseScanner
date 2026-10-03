@@ -12,7 +12,17 @@ import XCTest
 final class SpotConfirmUITests: XCTestCase {
     private static let largestText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
 
-    /// The review sample's area, read aloud.
+    /// The words-only card's three lines as VoiceOver reads them (units spelled out).
+    private struct Lines {
+        var along: String
+        var out: String
+        var up: String
+    }
+
+    /// The review sample's area, read aloud: one sentence on the photo, three lines in words.
+    private static let sampleLines = Lines(
+        along: "From 1 foot 10 inches to 4 feet 5 inches right of your meter",
+        out: "From the wall out to 1 foot 11 inches", up: "From the ground up to 3 feet 7 inches")
     private static let sampleSpace = "From 1 foot 10 inches to 4 feet 5 inches right of your meter, from the wall out to 1 foot 11 inches, and from the ground up to 3 feet 7 inches."
 
     override func setUp() {
@@ -37,23 +47,25 @@ final class SpotConfirmUITests: XCTestCase {
 
     @MainActor
     func testWithoutAPhotoTheAreaIsGivenInWords() throws {
-        try checkInWords(["-uiDemoSpotNoPhoto"], name: "spotConfirm-noPhoto", spoken: Self.sampleSpace)
-        try checkInWords(["-uiDemoSpotNoPhoto"] + Self.largestText, name: "spotConfirm-noPhoto-AX5", spoken: Self.sampleSpace)
+        try checkInWords(["-uiDemoSpotNoPhoto"], name: "spotConfirm-noPhoto", spoken: Self.sampleLines)
+        try checkInWords(["-uiDemoSpotNoPhoto"] + Self.largestText, name: "spotConfirm-noPhoto-AX5", spoken: Self.sampleLines)
     }
 
     /// A photo with no wall to draw the area with is shown as no photo: VoiceOver used to call
     /// the words-only card "Photo of your wall" and describe an outline that wasn't drawn.
     @MainActor
     func testWithoutAWallThePhotoIsNotShownUnmarked() throws {
-        try checkInWords(["-uiDemoSpotNoWall"], name: "spotConfirm-noWall", spoken: Self.sampleSpace)
+        try checkInWords(["-uiDemoSpotNoWall"], name: "spotConfirm-noWall", spoken: Self.sampleLines)
     }
 
     @MainActor
     func testTheAreaInWordsNamesTheSideOfTheMeter() throws {
         try checkInWords(["-uiDemoResultFile", Self.resultFile("spot-left"), "-uiDemoSpotNoPhoto"], name: "spotConfirm-noPhoto-left",
-                         spoken: "From 3 feet 6 inches to 6 feet left of your meter, from the wall out to 2 feet, and from the ground up to 3 feet 6 inches.")
+                         spoken: Lines(along: "From 3 feet 6 inches to 6 feet left of your meter",
+                                       out: "From the wall out to 2 feet", up: "From the ground up to 3 feet 6 inches"))
         try checkInWords(["-uiDemoResultFile", Self.resultFile("spot-straddle"), "-uiDemoSpotNoPhoto"], name: "spotConfirm-noPhoto-straddle",
-                         spoken: "From 1 foot 3 inches left to 1 foot 6 inches right of your meter, from the wall out to 2 feet, and from the ground up to 3 feet 6 inches.")
+                         spoken: Lines(along: "From 1 foot 3 inches left to 1 foot 6 inches right of your meter",
+                                       out: "From the wall out to 2 feet", up: "From the ground up to 3 feet 6 inches"))
     }
 
     /// Answering works the same without a photo: "Something's there" is taken and acknowledged.
@@ -74,27 +86,36 @@ final class SpotConfirmUITests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// The words-only spot check: no photo element, a question that names no outline, the area
-    /// read aloud in full, both answers present, and a clean accessibility audit.
+    /// The words-only spot check: no photo element, a question that names no outline, each of
+    /// the area's three lines rendered on screen with its spoken label, both answers present, and
+    /// a clean accessibility audit, which also checks those lines for contrast and clipping.
     @MainActor
-    private func checkInWords(_ arguments: [String], name: String, spoken: String) throws {
+    private func checkInWords(_ arguments: [String], name: String, spoken: Lines) throws {
         let app = launch(arguments)
         defer { app.terminate() }
-        let area = element(app, "spot.area")
-        guard area.waitForExistence(timeout: 10) else {
+        guard element(app, "spot.area").waitForExistence(timeout: 10) else {
             XCTFail("\(name): spot.area never appeared")
             return
         }
         attach(app, name: name)
         XCTAssertFalse(element(app, "spot.photo").exists, "\(name): no photo is shown without an outline on it")
-        let read = ElementRead.snapshot(area)
-        XCTAssertEqual(read?.label, "Where to look", name)
-        XCTAssertEqual(read?.value as? String, spoken, name)
+        XCTAssertEqual(ElementRead.snapshot(element(app, "spot.area.title"))?.label, "Where to look", name)
+        let window = app.windows.firstMatch.frame
+        for (id, expected) in [("along", spoken.along), ("out", spoken.out), ("up", spoken.up)] {
+            let line = element(app, "spot.area.\(id)")
+            // At AX5 the card can sit below the fold; the homeowner scrolls to it. Slowly, as
+            // ScreenStatesUITests does, so momentum doesn't carry the line past the top.
+            for _ in 0..<6 where !line.isHittable { app.scrollViews.firstMatch.swipeUp(velocity: .slow) }
+            let read = ElementRead.snapshot(line)
+            XCTAssertEqual(read?.label, expected, "\(name): spot.area.\(id)")
+            let frame = read?.frame ?? .zero
+            XCTAssertTrue(!frame.isEmpty && window.contains(frame), "\(name): spot.area.\(id) at \(frame) isn't on screen in \(window)")
+        }
         let question = ElementRead.snapshot(element(app, "spot.question"))?.label ?? ""
         XCTAssertTrue(question.contains("Is anything standing in this space?"), "\(name): \(question)")
         XCTAssertTrue(question.contains("take a look yourself"), "\(name): \(question)")
         // Nothing on screen may point at an outline that isn't drawn. Labels only: some elements'
-        // values aren't strings, and the area's value is checked in full above.
+        // values aren't strings.
         let outline = NSPredicate(format: "label CONTAINS[c] 'outline' OR label CONTAINS[c] 'marked area'")
         XCTAssertEqual(app.descendants(matching: .any).matching(outline).count, 0, "\(name): something still mentions the outline")
         XCTAssertTrue(app.buttons["action.spotClear"].exists, "\(name): It's clear is missing")

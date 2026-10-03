@@ -84,9 +84,6 @@ extension ScanEngine {
         let candidates = store.keyframes.map { SpotPhotoCandidate(id: $0.id, camera: $0.camera, trackingNormal: $0.tracking == .normal) }
         let choice = SpotPhoto.best(candidates, area: area, wall: wall)
         let stored = choice.flatMap { choice in store.keyframes.first { $0.id == choice.id } }
-        // `answer` is replaced by the homeowner's (`answerSpotCheck`) before it is recorded.
-        spotConfirm.pending = SpotConfirmation(area: area, answerSHA256: answerSHA256, sceneSHA256: sceneSHA256, photoID: stored?.id, answer: .clear)
-        spotConfirm.request = spotCheckRequest(area: area, photoID: stored?.id, answerSHA256: answerSHA256, sceneSHA256: sceneSHA256, id: id)
         let file = stored.map { store.directory.appending(path: $0.fileName) }
         if let choice {
             RuntimeLog.engine.info("spot check: photo \(choice.id, privacy: .public) shows \(Int(choice.footprintInView * 100))% of the spot and \(Int(choice.areaInView * 100))% of s=\(area.span.lowerBound)...\(area.span.upperBound)")
@@ -100,8 +97,20 @@ extension ScanEngine {
             if let image, let camera = stored?.camera {
                 photo = SpotCheck.Photo(image: image, projection: CameraProjection(
                     cameraToWorld: camera.cameraToWorld, intrinsics: camera.intrinsics, imageSize: camera.imageSize))
+            } else if let stored {
+                RuntimeLog.engine.error("spot check: keyframe \(stored.id, privacy: .public) didn't load; asking without a photo")
             }
-            state.spotCheck = Self.spotCheck(id: id, area: area, spot: spot, photo: photo, answer: nil, isSample: result.isSample)
+            let check = Self.spotCheck(id: id, area: area, spot: spot, photo: photo, answer: nil, isSample: result.isSample)
+            // Recorded once the photo has loaded, from what the screen shows: the photo only when
+            // it is outlined on screen, and the question asked with or without the outline.
+            let outlined = check.outline(on: state.wall) != nil
+            let shownID = outlined ? stored?.id : nil
+            // `answer` is replaced by the homeowner's (`answerSpotCheck`) before it is recorded.
+            spotConfirm.pending = SpotConfirmation(area: area, answerSHA256: answerSHA256, sceneSHA256: sceneSHA256, photoID: shownID, answer: .clear)
+            spotConfirm.request = spotCheckRequest(
+                area: area, question: ScanCopy.spotQuestionShown(outlined: outlined), photoID: shownID,
+                answerSHA256: answerSHA256, sceneSHA256: sceneSHA256, id: id)
+            state.spotCheck = check
             go(.spotConfirm)
         }
     }
@@ -155,15 +164,15 @@ extension ScanEngine {
     var spotCheckGuidance: GuidanceLog.Request? { spotConfirm.request }
 
     /// A gap_band request on the ground over the area. scene.json and the packet have no field
-    /// for the check, so the message carries what binds it: the photo shown and the sha256 of the
-    /// answer and scene it was about.
-    private func spotCheckRequest(area: SpotArea, photoID: String?, answerSHA256: String, sceneSHA256: String, id: Int) -> GuidanceLog.Request {
+    /// for the check, so the message carries what binds it: the question and photo shown and the
+    /// sha256 of the answer and scene it was about.
+    private func spotCheckRequest(area: SpotArea, question: Instruction, photoID: String?, answerSHA256: String, sceneSHA256: String, id: Int) -> GuidanceLog.Request {
         let format = { (value: Float) in String(format: "%.2f", value) }
         let binding = "Spot check \(id): keyframe \(photoID ?? "none") shown; spot s \(format(area.spot.lowerBound)) to \(format(area.spot.upperBound)) m, "
             + "area s \(format(area.span.lowerBound)) to \(format(area.span.upperBound)) m out to \(format(area.depth)) m; "
             + "answer sha256 \(answerSHA256), scene sha256 \(sceneSHA256)."
         return GuidanceLog.Request(
-            topic: .spotCheck(id: id), kind: .gapBand, origin: .phone, message: Self.text(ScanCopy.spotQuestion) + " " + binding,
+            topic: .spotCheck(id: id), kind: .gapBand, origin: .phone, message: Self.text(question) + " " + binding,
             band: .ground, span: area.span)
     }
 
