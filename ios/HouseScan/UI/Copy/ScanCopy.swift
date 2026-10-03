@@ -264,6 +264,7 @@ enum ScanCopy {
         case .tracking: "Move slowly"
         case .numberTooSmall: "Move closer so the number looks bigger"
         case .noNumber: "Couldn't read the number. Hold still for another photo."
+        case .photoNotSaved: "Your phone couldn't save that photo. Hold on the meter to try again."
         }
     }
 

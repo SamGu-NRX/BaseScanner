@@ -443,6 +443,9 @@ enum CloseUpProblem: Equatable, Sendable {
     case numberTooSmall
     /// No number could be read at all: retake.
     case noNumber
+    /// The photo couldn't be written to the phone, or read back once written. Nothing about the
+    /// shot was wrong, so the words don't blame the homeowner's hands (B-20).
+    case photoNotSaved
 }
 
 /// One reading of the meter number from the close-up, for the homeowner to confirm.

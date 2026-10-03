@@ -31,6 +31,10 @@ import OSLog
 /// - `-answersFromGate`: with `-autopilotGate` and a server URL, uploads go through the gate
 ///   folder instead of the network: the UI test reads each request there and writes the server's
 ///   answer (`GateAnswerProtocol`).
+/// - `-failCloseUpSave`: with `-replay`, every meter close-up's photo fails to save, as on a phone
+///   with no space left, so a UI test reaches the save-failure retake and the skip after it. The
+///   photo is dropped before `KeyframeStore.saveStill`, which then takes its own failure path.
+///   The retake reason stays up 10 s instead of 2, so the test's query can't miss it.
 /// - `-simulateAppStore`: run as an App Store install would, so the developer options and practice
 ///   meter are unavailable whatever the stored switch says (`DeveloperSettings`). It can only take
 ///   the switch away, never offer it.
@@ -46,6 +50,7 @@ struct LaunchOptions: Equatable {
     var simulateAppStore = false
     var injectGroundRise: Float?
     var answersFromGate = false
+    var failCloseUpSave = false
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -62,6 +67,7 @@ struct LaunchOptions: Equatable {
         autopilotCantGetThere = arguments.contains("-autopilotCantGetThere")
         autopilotSomethingThere = arguments.contains("-autopilotSomethingThere")
         simulateAppStore = arguments.contains("-simulateAppStore")
+        failCloseUpSave = arguments.contains("-failCloseUpSave")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
