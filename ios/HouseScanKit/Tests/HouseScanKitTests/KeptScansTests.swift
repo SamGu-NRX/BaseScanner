@@ -220,6 +220,11 @@ import Testing
     }
 
     // MARK: A bundle still being written when Start over lists its folder (B44)
+    //
+    // The async tests below carry a five-minute time limit, only so that a gate never released
+    // fails instead of hanging; the gates and assertions decide pass or fail. In the concurrent
+    // package suite these tests reported up to 82.5 s (hosted run 37161498639, which had no
+    // limit), so a one-minute limit was too tight to rely on.
 
     /// A scan folder whose bundle is being written: the photos, stamp and raw streams the packet
     /// is built from and the half-assembled `packet/`, but no `scan.zip` yet.
@@ -292,7 +297,7 @@ import Testing
     /// with no zip yet it is listed as never packaged. The deletion waits for the write; a zip
     /// written to the end keeps the folder, one cut short keeps it without a place (as any
     /// partial bundle), and a write that failed before zipping leaves it to be deleted.
-    @Test(.timeLimit(.minutes(1)), arguments: WriteEnd.allCases)
+    @Test(.timeLimit(.minutes(5)), arguments: WriteEnd.allCases)
     func aBundleStillBeingWrittenIsJudgedOnlyAfterItsWrite(end: WriteEnd) async throws {
         let root = try Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -388,7 +393,7 @@ import Testing
     /// its inputs in place, and finds them intact. The first scan's bundle is kept, the second's
     /// only if its write ran (one queued for a scan already started over is skipped), and the
     /// newest folders are never listed.
-    @Test(.timeLimit(.minutes(1)), arguments: [true, false])
+    @Test(.timeLimit(.minutes(5)), arguments: [true, false])
     func rapidStartOversWaitForTheWholeChain(secondScanWrites: Bool) async throws {
         let root = try Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
