@@ -22,6 +22,8 @@ State what the old code did before describing the new behavior. Link the reviewe
 
 The `size:*` label describes the effective diff. It is a review signal, not a merge gate. Do not set it by hand.
 
+Greptile reviews new commits through [`.greptile/config.json`](.greptile/config.json). The dashboard's open-only trigger left follow-up commits unreviewed. This repository override adds push reviews without changing other repositories' settings. Greptile reads this setting from the PR's source branch, so older branches need the config too. For a branch without it, request a current review with `@greptileai review` after pushing. Use `@greptileai review this draft` for drafts.
+
 ## Checks
 
 | Check | Runs on GitHub when | Local command |
