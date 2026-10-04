@@ -41,7 +41,8 @@ struct ResultARScreen: View {
             CameraChrome(
                 instruction: instruction,
                 isReplay: state.isReplay,
-                isAutopilot: state.isAutopilot
+                isAutopilot: state.isAutopilot,
+                aims: showsSpot
             ) {
                 Button("Done") { actions.closeAR() }
                     .buttonStyle(.primary)
@@ -51,6 +52,16 @@ struct ResultARScreen: View {
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.7, bounce: 0.15)) { appeared = true }
         }
+    }
+
+    /// Whether the spot is on the wall in view: the phone tracks and the result has a spot. Then
+    /// the homeowner is looking at the spot, so at the accessibility text sizes the card folds
+    /// its detail (the placement, and what the fit still needs) under Details and leaves the
+    /// camera open (`CameraChrome.aims`). At AX-XXXL the full card covered nearly the whole
+    /// camera (run 37162669527, resultAR-candidate-settled-AX5). "Point at your meter" while
+    /// tracking is lost keeps every word in view: it is what to do, and nothing is drawn yet.
+    private var showsSpot: Bool {
+        state.tracking == .normal && state.result?.spot != nil
     }
 
     private static func overlayLabel(_ result: ResultPresentation) -> String {

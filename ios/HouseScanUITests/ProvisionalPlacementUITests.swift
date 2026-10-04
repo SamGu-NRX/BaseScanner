@@ -81,14 +81,50 @@ final class ProvisionalPlacementUITests: XCTestCase {
         scroll(to: any["result.candidateNote"].firstMatch, in: app)
         attach(app, name: "result-candidate-settled-AX5-note")
 
+        // The AR view at AX-XXXL: the card folds to its title and Details, so the camera stays
+        // open on the spot; Details holds the placement and what the fit still needs.
         try Data().write(to: gate.appending(path: "result"))
         let instruction = any["instruction"].firstMatch
+        let details = any["instruction.details"].firstMatch
+        let detail = any["instruction.detail"].firstMatch
+        let done = app.buttons["action.closeAR"]
         XCTAssertTrue(any["screen.resultAR"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertTrue(instruction.waitForExistence(timeout: 10))
-        XCTAssertTrue(instruction.label.contains(Self.candidate), instruction.label)
-        XCTAssertTrue(instruction.label.contains("An installer needs to check the fit on site."), instruction.label)
-        XCTAssertTrue(app.buttons["action.closeAR"].isHittable, "Done is out of reach under the AR instruction")
-        attach(app, name: "resultAR-candidate-settled-AX5")
+        XCTAssertTrue(details.waitForExistence(timeout: 10), "the AR card didn't fold at the largest text size")
+        XCTAssertEqual(instruction.label, Self.candidate)
+        XCTAssertFalse(detail.exists)
+        assertOpenCamera(below: details, above: done, in: app, "folded")
+        attach(app, name: "resultAR-candidate-settled-AX5-folded")
+
+        details.tap()
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details didn't open the placement and caveat")
+        XCTAssertTrue(detail.label.contains("right of your meter"), detail.label)
+        XCTAssertTrue(detail.label.contains("An installer needs to check the fit on site."), detail.label)
+        assertNoFitWords(detail.label)
+        attach(app, name: "resultAR-candidate-settled-AX5-details")
+
+        details.tap()
+        XCTAssertTrue(detail.waitForNonExistence(timeout: 5), "Details didn't close")
+        assertOpenCamera(below: details, above: done, in: app, "folded again")
+        attach(app, name: "resultAR-candidate-settled-AX5-refolded")
+        XCTAssertTrue(done.isHittable)
+        done.tap()
+        XCTAssertTrue(any["screen.result"].firstMatch.waitForExistence(timeout: 10), "Done didn't return to the result")
+    }
+
+    /// The camera between the folded card and Done is at least the chrome's least open window
+    /// (`CameraChromeLayout.minCameraWindow`, 180 pt), measured from the elements' frames, not
+    /// inferred from Done being hittable.
+    @MainActor
+    private func assertOpenCamera(below card: XCUIElement, above done: XCUIElement, in app: XCUIApplication, _ state: String,
+                                  file: StaticString = #filePath, line: UInt = #line) {
+        let open = done.frame.minY - card.frame.maxY
+        XCTAssertGreaterThanOrEqual(open, 180, "\(state): \(open) pt of camera between the card (\(card.frame)) and Done (\(done.frame))",
+                                    file: file, line: line)
+        let note = XCTAttachment(string: "\(state): open camera \(open) pt, card bottom \(card.frame.maxY), Done top \(done.frame.minY), window \(app.windows.firstMatch.frame)")
+        note.name = "resultAR-open-camera-\(state)"
+        note.lifetime = .keepAlways
+        add(note)
     }
 
     // MARK: Server answers in Fixtures/results
