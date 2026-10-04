@@ -35,14 +35,20 @@ struct GapRequestScreen: View {
             // The end lands under the circle, as on the walk's "Is this the right end?". It fades
             // with "Wall ends here" on the same spring, so the pair comes and goes together;
             // scoped to the circle, so nothing else on the camera animates with it. Under Reduce
-            // Motion only its opacity changes, briefly: nothing moves.
+            // Motion only its opacity changes, briefly: nothing moves. It is there only while
+            // offered, rather than kept at zero opacity: kept, its "Aiming circle" stayed in the
+            // accessibility tree under the end question, hidden or not (CI run 37171342665).
             if state.gap?.pastEndSide != nil {
-                Reticle(diameter: 56)
-                    .endAimCircle(shown: offersEndMark)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
-                    .opacity(offersEndMark ? 1 : 0)
-                    .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: offersEndMark)
+                ZStack {
+                    if offersEndMark {
+                        Reticle(diameter: 56)
+                            .endAimCircle()
+                            .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: offersEndMark)
             }
             if state.gap?.isSatisfied == true {
                 SuccessBadge()
