@@ -26,7 +26,8 @@ final class DemoEngine: ScanActions {
     /// `-uiDemoUnusableAnswer <n>`: how many answers in a row House Scan can't use; 0 when off.
     private let unusableAnswers: Int
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
-    /// `pastEnd` is a server past_end request on the right, with "Wall ends here" (B-12).
+    /// `pastEnd` is a server past_end request on the right, with "Wall ends here" (B-12);
+    /// `pastEndLeft` the same on the left.
     private let gapKind: String?
     /// `-uiDemoEndMarkRefusal`: "Wall ends here" was pressed with the circle off the wall, and the
     /// demo's circle stays off it, so pressing again refuses again.
@@ -422,25 +423,33 @@ final class DemoEngine: ScanActions {
             state.gap?.band = .wall
             state.target = DemoScene.wall.world(s: 1.7, height: 3.0)
             state.path = []
-        case "pastEnd":
-            // The check asks to walk on past the right end, which it clears, as the real engine's
+        case "pastEnd", "pastEndLeft":
+            // The check asks to walk on past an end, which it clears, as the real engine's
             // `beginServerGap` does; the wall may stop sooner, so "Wall ends here" is offered.
-            let end = demoRightEnd
-            let past: ClosedRange<Float> = end...(end + 0.6)
-            state.wall?.rightEnd = nil
+            let side: WallSide = gapKind == "pastEndLeft" ? .left : .right
+            let sign: Float = side == .right ? 1 : -1
+            let end = side == .right ? demoRightEnd : demoLeftEnd
+            let past: ClosedRange<Float> = side == .right ? end...(end + 0.6) : (end - 0.6)...end
+            if side == .right { state.wall?.rightEnd = nil } else { state.wall?.leftEnd = nil }
             state.gap?.origin = .server
-            state.gap?.reason = .server(detail: "Keep walking past the right end of the scan (14 ft 1 in right of the meter): a spot within reach may be there.")
+            state.gap?.reason = .server(detail: side == .right
+                ? "Keep walking past the right end of the scan (14 ft 1 in right of the meter): a spot within reach may be there."
+                : "Keep walking past the left end of the scan (9 ft 6 in left of the meter): a spot within reach may be there.")
             state.gap?.span = past
-            state.gap?.pastEndSide = .right
-            state.target = DemoScene.wall.world(s: end + 0.3, height: 0, out: 0.5)
-            state.path = DemoScene.path(toward: end + 0.3)
+            state.gap?.pastEndSide = side
+            // The check sends a past_end request with its answer, so the card says "One more view
+            // to finish" over it, as the real engine's does (`GapRequestScreen.followUps`).
+            state.result = sample
+            state.followUps = 1
+            state.target = DemoScene.wall.world(s: end + sign * 0.3, height: 0, out: 0.5)
+            state.path = DemoScene.path(toward: end + sign * 0.3)
             if endMarkRefused {
                 // As in the real engine, a circle off the wall has no end preview (`circleEnd`).
                 state.endMarkRefusal = .noWall
                 state.endPreview = nil
             } else {
                 // The circle on the wall a little before the old end: where the wall really stops.
-                state.endPreview = EndPreview(side: .right, s: end - 0.4, atReticle: true)
+                state.endPreview = EndPreview(side: side, s: end - sign * 0.4, atReticle: true)
             }
             return
         default:

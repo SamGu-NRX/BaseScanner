@@ -33,19 +33,72 @@ final class PastEndRecoveryUITests: XCTestCase {
     }
 
     @MainActor
+    func testAPastEndRequestOnTheLeftKeepsTheCircleOpenAtLargestTextSize() throws {
+        let app = launch(["-uiDemoGap", "pastEndLeft"] + Self.largestText)
+        let card = label(app, "instruction")
+        XCTAssertTrue(card.contains("Keep walking left"), "the folded lead names the side: \(card)")
+        let mark = app.buttons["action.markEnd"]
+        XCTAssertTrue(mark.waitForExistence(timeout: 5))
+        scrollIntoView(mark, in: app)
+        XCTAssertTrue(mark.isHittable, "Wall ends here can't be reached")
+        assertEndCircleOpen(app, covers: Self.endCovers, "left past-end, AX5")
+        snap(app, "gapRequest-pastEndLeft-AX5")
+    }
+
+    @MainActor
     private func offersWallEndsHere(textSize: [String], name: String) throws {
+        let folded = !textSize.isEmpty
         let app = launch(["-uiDemoGap", "pastEnd"] + textSize)
         let card = label(app, "instruction")
-        XCTAssertTrue(card.contains("Keep walking past the right end"), "the request's own words: \(card)")
-        XCTAssertTrue(card.contains("If the wall stops sooner, aim where it stops and tap Wall ends here."), "card reads: \(card)")
+        if folded {
+            // Folded around the circle: walking on leads; the request's words, the eyebrow and
+            // the way to mark the end are under Details.
+            XCTAssertTrue(card.contains("Keep walking right"), "card reads: \(card)")
+            XCTAssertFalse(card.contains("If the wall stops sooner"), "the how-to words must fold under Details: \(card)")
+            XCTAssertFalse(card.contains("One more view to finish"), "the eyebrow must fold under Details: \(card)")
+        } else {
+            XCTAssertTrue(card.contains("One more view to finish"), "card reads: \(card)")
+            XCTAssertTrue(card.contains("Keep walking past the right end"), "the request's own words: \(card)")
+            XCTAssertTrue(card.contains("If the wall stops sooner, aim where it stops and tap Wall ends here."), "card reads: \(card)")
+        }
         XCTAssertTrue(element(app, "action.skipGap").exists, "\"I can't get there\" stays the decline")
         let mark = app.buttons["action.markEnd"]
         XCTAssertTrue(mark.waitForExistence(timeout: 5), "a past-end request must offer Wall ends here")
         XCTAssertEqual(mark.label, "Wall ends here")
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable, "Wall ends here can't be reached")
+        // Where "Wall ends here" can be pressed, the circle it marks at is in view.
+        assertEndCircleOpen(app, covers: Self.endCovers, name)
         snap(app, name)
+        guard folded else { return }
+
+        // Details opens every word of the unfolded card, and closes back to the open circle.
+        scrollToTop(app)
+        let details = app.buttons["instruction.details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 5), "the folded card needs Details")
+        tapWhenReady(details)
+        let detail = element(app, "instruction.detail")
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the folded words")
+        for words in ["One more view to finish.", "Show the ground", "Keep walking past the right end", "If the wall stops sooner, aim where it stops and tap Wall ends here."] {
+            XCTAssertTrue(detail.label.contains(words), "Details must hold \"\(words)\": \(detail.label)")
+        }
+        snap(app, "\(name)-details")
+        tapWhenReady(details)
+        XCTAssertTrue(waitForAbsence(detail), "Details must close again")
+        scrollIntoView(mark, in: app)
+        XCTAssertTrue(mark.isHittable)
+        assertEndCircleOpen(app, covers: Self.endCovers, "\(name), Details closed")
+        // The decline moved from the card to the actions, and stays within reach.
+        let decline = app.buttons["action.skipGap"]
+        scrollIntoView(decline, in: app)
+        XCTAssertTrue(decline.isHittable, "I can't get there can't be reached")
+        XCTAssertEqual(decline.label, "I can't get there")
+        XCTAssertGreaterThan(decline.frame.minY, mark.frame.maxY - 0.5, "the decline sits under Wall ends here")
     }
+
+    /// What may cover the circle: the actions and the card's reply. The card itself is checked by
+    /// its bottom edge (`assertEndCircleOpen`).
+    private static let endCovers = ["action.markEnd", "action.skipGap", "action.showResult", "action.endCorner", "action.endBlocked", "action.endEnds"]
 
     /// The circle off the wall: the card says why and what to do, the decline stays, and pressing
     /// again with the circle still off the wall refuses again rather than marking anything.
@@ -61,18 +114,33 @@ final class PastEndRecoveryUITests: XCTestCase {
 
     @MainActor
     private func refusal(textSize: [String], name: String) throws {
+        let folded = !textSize.isEmpty
         let app = launch(["-uiDemoGap", "pastEnd", "-uiDemoEndMarkRefusal"] + textSize)
+        // Folded, the correction leads and the reason goes under Details.
+        let says = folded ? "Aim at the wall" : "The circle isn't on the wall"
         var card = label(app, "instruction")
-        XCTAssertTrue(card.contains("The circle isn't on the wall"), "card reads: \(card)")
-        XCTAssertTrue(card.contains("Aim it at the wall where it stops or turns"), "card reads: \(card)")
+        XCTAssertTrue(card.contains(says), "card reads: \(card)")
+        if folded {
+            XCTAssertFalse(card.contains("The circle isn't on the wall"), "the reason must fold under Details: \(card)")
+        } else {
+            XCTAssertTrue(card.contains("Aim it at the wall where it stops or turns"), "card reads: \(card)")
+        }
         XCTAssertTrue(element(app, "action.skipGap").exists)
-        snap(app, name)
         let mark = app.buttons["action.markEnd"]
         scrollIntoView(mark, in: app)
+        XCTAssertTrue(mark.isHittable)
+        assertEndCircleOpen(app, covers: Self.endCovers, name)
+        snap(app, name)
         tapWhenReady(mark)
         card = label(app, "instruction")
-        XCTAssertTrue(card.contains("The circle isn't on the wall"), "a second press marked something: \(card)")
+        XCTAssertTrue(card.contains(says), "a second press marked something: \(card)")
         XCTAssertFalse(element(app, "action.endBlocked").exists, "no end was marked, so nothing to ask")
+        guard folded else { return }
+        scrollToTop(app)
+        tapWhenReady(app.buttons["instruction.details"])
+        let detail = element(app, "instruction.detail")
+        XCTAssertTrue(detail.waitForExistence(timeout: 5))
+        XCTAssertTrue(detail.label.contains("The circle isn't on the wall. Aim it at the wall where it stops or turns, then tap Wall ends here."), "Details reads: \(detail.label)")
     }
 
     /// "Wall ends here" asks the walk's end question; it replaces the request and its decline
@@ -101,6 +169,10 @@ final class PastEndRecoveryUITests: XCTestCase {
         for answer in ["action.endCorner", "action.endBlocked", "action.endEnds"] {
             XCTAssertTrue(app.buttons[answer].exists, "\(answer) missing")
         }
+        // In their order, and the question needs no circle.
+        let tops = ["action.endCorner", "action.endBlocked", "action.endEnds"].map { app.buttons[$0].frame.minY }
+        XCTAssertEqual(tops, tops.sorted(), "the answers moved out of order: \(tops)")
+        XCTAssertFalse(element(app, "aim.circle").exists, "the question shows no circle")
         snap(app, name)
         let blocked = app.buttons["action.endBlocked"]
         scrollIntoView(blocked, in: app)
@@ -383,6 +455,23 @@ final class PastEndRecoveryUITests: XCTestCase {
                 : min(window.minY - frame.minY + 24, window.height / 3)
             start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: shift)))
         }
+    }
+
+    /// Drags the screen down until its top shows.
+    @MainActor
+    private func scrollToTop(_ app: XCUIApplication) {
+        let scroll = app.scrollViews.firstMatch
+        guard scroll.exists else { return }
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        for _ in 0..<4 {
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: app.windows.firstMatch.frame.height * 0.4)))
+        }
+    }
+
+    @MainActor
+    private func waitForAbsence(_ target: XCUIElement) -> Bool {
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: target)
+        return XCTWaiter().wait(for: [gone], timeout: 5) == .completed
     }
 
     @MainActor

@@ -34,6 +34,7 @@ struct WallWalkScreen: View {
             // asks for it) lands under the circle.
             if state.marking != nil || controlsKey == .nextWall || controlsKey == .markEnd {
                 Reticle(diameter: 56)
+                    .endAimCircle()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
                 TapRipple(ripples: $taps)
@@ -136,20 +137,31 @@ struct WallWalkScreen: View {
     /// place, and a step to the side moves into the title when it is needed (`ScanCopy.aim`).
     /// Looking past an obstruction folds the other way: its action ("Look around it") leads and
     /// the situation and how go under Details (`Instruction.folded`), since unfolded at AX5 it
-    /// covered the camera and the spot it asks about. Not where the second line is the action
-    /// and nothing leads with it: a step back added to an aim step, the wall's end, whose title
-    /// only asks ("Aim where the wall stops"), marking the next wall. Nor a question, a mark, the
-    /// tray, coaching that replaces the task, or a refusal.
+    /// covered the camera and the spot it asks about. The wall's end folds the same way, around
+    /// the circle (`endAimFolds`). Not where the second line is the action and nothing leads with
+    /// it: a step back added to an aim step, marking the next wall. Nor a question, a mark, the
+    /// tray, coaching that replaces the task, or a refusal other than the end's.
     private var aims: Bool {
         switch controlsKey {
         case .walking, .finish:
             if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
             if state.guidanceHint?.stepBack == true { return false }
             return tone != .refusal
-        case .markEnd, .nextWall, .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:
+        case .markEnd:
+            // Folds around the circle, refusal or not (`endAimFolds`).
+            if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
+            return true
+        case .nextWall, .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:
             return false
         }
     }
+
+    /// At the largest text sizes on "Is this the right end of the wall?", the card folds to a
+    /// two-line lead ("Aim at the right end", or a refusal's correction) so the circle in the
+    /// middle of the camera stays open, and "The wall keeps going" moves from the card to the
+    /// actions under "Wall ends here": with it on the card, or the unfolded words, the card
+    /// reached past the circle (`ScanCopy.endAimFold`). As on a past_end request.
+    private var endAimFolds: Bool { controlsKey == .markEnd && aims && typeSize.isAccessibilitySize }
 
     // MARK: Controls
 
@@ -338,6 +350,19 @@ struct WallWalkScreen: View {
                     .accessibilityHint("Marks the end of the wall at the circle in the middle of the screen")
                     .accessibilityIdentifier("action.markEnd")
                     .transition(.opacity)
+                    if endAimFolds, let copy = ScanCopy.reply(for: state.guidance) {
+                        // The card's reply, moved here while the card folds around the circle.
+                        Button {
+                            actions.cannotAccessArea()
+                        } label: {
+                            Text(copy.title)
+                                .spansStack(stacksActions)
+                        }
+                        .buttonStyle(.secondary)
+                        .accessibilityHint(copy.hint)
+                        .accessibilityIdentifier("action.cannotAccess")
+                        .transition(.opacity)
+                    }
                 case .walking where offersEndHere:
                     Button {
                         actions.endWallHere()
@@ -403,7 +428,7 @@ struct WallWalkScreen: View {
     /// every step.
     private var reply: InstructionCard.Reply? {
         guard state.marking == nil, !state.endScanQuestion, state.endQuestion == nil, !state.overheadQuestion, state.nextWallConfirm == nil, !coachingHidesReply, !trayOpen,
-              let copy = ScanCopy.reply(for: state.guidance) else { return nil }
+              !endAimFolds, let copy = ScanCopy.reply(for: state.guidance) else { return nil }
         return InstructionCard.Reply(
             title: copy.title,
             identifier: "action.cannotAccess",

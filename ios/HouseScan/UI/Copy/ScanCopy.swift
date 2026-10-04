@@ -71,7 +71,8 @@ enum ScanCopy {
         case .markEnd(let side):
             Instruction(
                 title: "Is this the \(side.rawValue) end of the wall?",
-                detail: "Aim where it stops or turns a corner and tap Wall ends here. If it goes on, tap The wall keeps going."
+                detail: "Aim where it stops or turns a corner and tap Wall ends here. If it goes on, tap The wall keeps going.",
+                folded: endAimFold("Aim at the \(side.rawValue) end", "Is this the \(side.rawValue) end of the wall? Aim where it stops or turns a corner and tap Wall ends here. If it goes on, tap The wall keeps going.")
             )
         case .aimAtGround(let s):
             // A cell counts once seen from two places at least 0.25 m apart (`coveringBaseline`),
@@ -389,21 +390,44 @@ enum ScanCopy {
     static let wallKeepsGoing = "The wall keeps going"
 
     /// Why "Wall ends here" marked nothing, and what to do instead (`EndMarkRefusal`).
+    /// Folded at the largest text sizes, each refusal leads with what to do about it, and its
+    /// reason and the full words go under Details (`endAimFold`).
     static func endMarkRefusal(_ refusal: EndMarkRefusal, asked side: WallSide) -> Instruction {
         switch refusal {
         case .noWall:
-            Instruction(title: "The circle isn't on the wall", detail: "Aim it at the wall where it stops or turns, then tap Wall ends here.")
+            Instruction(
+                title: "The circle isn't on the wall", detail: "Aim it at the wall where it stops or turns, then tap Wall ends here.",
+                folded: endAimFold("Aim at the wall", "The circle isn't on the wall. Aim it at the wall where it stops or turns, then tap Wall ends here."))
         case .otherSide(let landed):
-            Instruction(title: "That's the \(landed.rawValue) side of your meter", detail: "Turn to the \(side.rawValue) end, then tap Wall ends here.")
+            Instruction(
+                title: "That's the \(landed.rawValue) side of your meter", detail: "Turn to the \(side.rawValue) end, then tap Wall ends here.",
+                folded: endAimFold("Turn to the \(side.rawValue) end", "That's the \(landed.rawValue) side of your meter. Turn to the \(side.rawValue) end, then tap Wall ends here."))
         case .trackingNotReady:
-            Instruction(title: "One moment, your phone is still finding its place", detail: "Then aim at the \(side.rawValue) end.")
+            Instruction(
+                title: "One moment, your phone is still finding its place", detail: "Then aim at the \(side.rawValue) end.",
+                folded: endAimFold("Wait a moment", "Your phone is still finding its place. Then aim at the \(side.rawValue) end."))
         case .tooLittleWall:
             // Says what the app can't do, not where to aim: the homeowner must not be nudged to
             // mark an end farther than the wall really goes. "I can't get there" stays the way on.
             // The app's own minimum (`WallFrame.minWallLength`), not a measured installation rule:
-            // no reason is given for it, and rule distances belong to the server.
-            Instruction(title: "House Scan can't use a wall that short", detail: "If this is where the wall ends, tap I can't get there to continue.")
+            // no reason is given for it, and rule distances belong to the server. Folded, the lead
+            // says only that; aiming elsewhere is right only if the circle was off the real end,
+            // so it doesn't lead.
+            Instruction(
+                title: "House Scan can't use a wall that short", detail: "If this is where the wall ends, tap I can't get there to continue.",
+                folded: endAimFold("Too short to use", "House Scan can't use a wall that short. If this is where the wall ends, tap I can't get there to continue."))
         }
+    }
+
+    /// The words of a step that marks the wall's end at the circle, folded at the largest text
+    /// sizes (`InstructionCard.foldsDetail`): a lead short enough to stay two lines, even beside
+    /// the refusal triangle, and every word of the unfolded card under Details. Unfolded, the
+    /// card covered the circle in the middle of the camera at AX5 (CI run 37165788075, iPhone
+    /// 17): the circle's top is 28 pt above the middle, and a two-line card without its reply
+    /// ends above it, where one with a third line or the reply doesn't (`GapRequestScreen`,
+    /// `WallWalkScreen` move the reply to their actions at those sizes).
+    static func endAimFold(_ lead: String, _ everything: String) -> Instruction.Folded {
+        Instruction.Folded(title: lead, detail: everything)
     }
 
     static func nextWallRefusal(_ refusal: NextWallRefusal) -> Instruction {
@@ -462,8 +486,12 @@ enum ScanCopy {
             let title = gap.band == .ground ? "Show the ground \(stretch)" : "Show the wall \(stretch)"
             // A past_end request asks to walk on past an end; the wall may really stop before
             // that, and the screen offers the walk's own "Wall ends here" for it (B-12).
-            guard gap.pastEndSide != nil else { return Instruction(title: title, detail: detail) }
-            return Instruction(title: title, detail: "\(detail) \(pastEndAlternative)")
+            guard let side = gap.pastEndSide else { return Instruction(title: title, detail: detail) }
+            // Folded, walking on leads, as the request asks; marking the end is under Details,
+            // with the circle and "Wall ends here" in view.
+            return Instruction(
+                title: title, detail: "\(detail) \(pastEndAlternative)",
+                folded: endAimFold("Keep walking \(side.rawValue)", "\(title). \(detail) \(pastEndAlternative)"))
         case .groundOut(let out):
             return Instruction(
                 title: "Show the ground out to about \(Distance.feetAtLeast(out)) from the wall",
