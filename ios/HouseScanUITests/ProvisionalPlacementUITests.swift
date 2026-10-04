@@ -37,17 +37,17 @@ final class ProvisionalPlacementUITests: XCTestCase {
         let tryAgain = app.buttons["action.retryUpload"]
         XCTAssertTrue(tryAgain.waitForExistence(timeout: 300), "the unbound answer never offered Try again")
         tryAgain.tap()
-        XCTAssertTrue(any["screen.result"].waitForExistence(timeout: 120), "the passing answer never reached the result")
+        XCTAssertTrue(any["screen.result"].firstMatch.waitForExistence(timeout: 120), "the passing answer never reached the result")
         XCTAssertEqual(server.requests.count, 2)
-        XCTAssertEqual(any["result.headline"].label, Self.candidate)
-        XCTAssertFalse(any["result.spotRefused"].exists)
+        XCTAssertEqual(any["result.headline"].firstMatch.label, Self.candidate)
+        XCTAssertFalse(any["result.spotRefused"].firstMatch.exists)
         assertCandidateCard(app)
         attach(app, name: "result-candidate-engine")
 
         // The autopilot opens the AR view once the result's gate opens.
         try Data().write(to: gate.appending(path: "result"))
-        let instruction = any["instruction"]
-        XCTAssertTrue(any["screen.resultAR"].waitForExistence(timeout: 20))
+        let instruction = any["instruction"].firstMatch
+        XCTAssertTrue(any["screen.resultAR"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertTrue(instruction.waitForExistence(timeout: 10))
         XCTAssertTrue(instruction.label.contains(Self.candidate), instruction.label)
         XCTAssertTrue(instruction.label.contains("An installer needs to check the fit on site."), instruction.label)
@@ -72,18 +72,18 @@ final class ProvisionalPlacementUITests: XCTestCase {
         defer { app.terminate() }
         let any = app.descendants(matching: .any)
 
-        XCTAssertTrue(any["screen.result"].waitForExistence(timeout: 420), "the second passing answer never reached the result")
+        XCTAssertTrue(any["screen.result"].firstMatch.waitForExistence(timeout: 420), "the second passing answer never reached the result")
         XCTAssertEqual(server.requests.count, 2, "the spot check's answer should send the scan once more")
-        XCTAssertEqual(any["result.headline"].label, Self.candidate)
-        XCTAssertTrue(any["result.spotRefused"].exists, "the settled answer's notice is missing")
+        XCTAssertEqual(any["result.headline"].firstMatch.label, Self.candidate)
+        XCTAssertTrue(any["result.spotRefused"].firstMatch.exists, "the settled answer's notice is missing")
         assertCandidateCard(app)
         attach(app, name: "result-candidate-settled-AX5")
-        scroll(to: any["result.candidateNote"], in: app)
+        scroll(to: any["result.candidateNote"].firstMatch, in: app)
         attach(app, name: "result-candidate-settled-AX5-note")
 
         try Data().write(to: gate.appending(path: "result"))
-        let instruction = any["instruction"]
-        XCTAssertTrue(any["screen.resultAR"].waitForExistence(timeout: 20))
+        let instruction = any["instruction"].firstMatch
+        XCTAssertTrue(any["screen.resultAR"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertTrue(instruction.waitForExistence(timeout: 10))
         XCTAssertTrue(instruction.label.contains(Self.candidate), instruction.label)
         XCTAssertTrue(instruction.label.contains("An installer needs to check the fit on site."), instruction.label)
@@ -113,12 +113,12 @@ final class ProvisionalPlacementUITests: XCTestCase {
             app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result"] + extra
             app.launch()
             let any = app.descendants(matching: .any)
-            XCTAssertTrue(any["screen.result"].waitForExistence(timeout: 15))
-            XCTAssertNotEqual(any["result.headline"].label, Self.candidate, "\(extra)")
-            let details = any["result.details"]
+            XCTAssertTrue(any["screen.result"].firstMatch.waitForExistence(timeout: 15))
+            XCTAssertNotEqual(any["result.headline"].firstMatch.label, Self.candidate, "\(extra)")
+            let details = any["result.details"].firstMatch
             scroll(to: details, in: app)
             details.tap()
-            let summary = any["result.summary"]
+            let summary = any["result.summary"].firstMatch
             XCTAssertTrue(summary.waitForExistence(timeout: 10), "\(extra): a review answer's summary is missing")
             assertNoFitWords(summary.label)
             XCTAssertFalse(summary.label.lowercased().contains("fits"), summary.label)
@@ -132,9 +132,9 @@ final class ProvisionalPlacementUITests: XCTestCase {
         let app = Self.launchFixture("reject-nearest", textSize: [])
         defer { app.terminate() }
         let any = app.descendants(matching: .any)
-        XCTAssertEqual(any["result.headline"].label, "Not on this wall")
-        XCTAssertFalse(any["result.candidateNote"].exists)
-        XCTAssertTrue(any["result.nearest"].label.hasPrefix("The closest spot"))
+        XCTAssertEqual(any["result.headline"].firstMatch.label, "Not on this wall")
+        XCTAssertFalse(any["result.candidateNote"].firstMatch.exists)
+        XCTAssertTrue(any["result.nearest"].firstMatch.label.hasPrefix("The closest spot"))
         attach(app, name: "result-reject")
     }
 
@@ -143,7 +143,7 @@ final class ProvisionalPlacementUITests: XCTestCase {
         let app = Self.launchFixture("pass", textSize: textSize)
         defer { app.terminate() }
         let any = app.descendants(matching: .any)
-        XCTAssertEqual(any["result.headline"].label, Self.candidate)
+        XCTAssertEqual(any["result.headline"].firstMatch.label, Self.candidate)
         assertCandidateCard(app)
         let model = any.matching(NSPredicate(format: "label == '3D view of your wall'")).firstMatch
         XCTAssertTrue(model.waitForExistence(timeout: 10))
@@ -153,13 +153,13 @@ final class ProvisionalPlacementUITests: XCTestCase {
 
         // Details: the checks as calculations on the recorded scan, a pass without the server's
         // positive reason, and no server summary that says the spot fits.
-        let details = any["result.details"]
+        let details = any["result.details"].firstMatch
         scroll(to: details, in: app)
         details.tap()
-        let note = any["result.calculatedNote"]
+        let note = any["result.calculatedNote"].firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 10))
-        XCTAssertFalse(any["result.summary"].exists, "a possible spot's summary is the server's pass")
-        let row = any["detail.check.gas_clearance"]
+        XCTAssertFalse(any["result.summary"].firstMatch.exists, "a possible spot's summary is the server's pass")
+        let row = any["detail.check.gas_clearance"].firstMatch
         XCTAssertTrue(row.exists)
         XCTAssertEqual(row.label, "Distance from gas equipment: Passes on recorded data", row.label)
         let rowValue = row.value as? String ?? ""
@@ -169,12 +169,12 @@ final class ProvisionalPlacementUITests: XCTestCase {
 
         // The AR view draws the proposed spot. The demo's answer is a sample, so the AR title
         // says so (`ResultARScreen`); the drawing names the spot as proposed.
-        scroll(to: any["action.showAR"], in: app)
+        scroll(to: any["action.showAR"].firstMatch, in: app)
         app.buttons["action.showAR"].tap()
-        let overlay = any["ar.overlay"]
+        let overlay = any["ar.overlay"].firstMatch
         XCTAssertTrue(overlay.waitForExistence(timeout: 10))
         XCTAssertEqual(overlay.label, "A proposed battery spot, drawn on your wall")
-        assertNoFitWords(any["instruction"].label)
+        assertNoFitWords(any["instruction"].firstMatch.label)
         attach(app, name: "\(name)-AR")
     }
 
@@ -185,13 +185,13 @@ final class ProvisionalPlacementUITests: XCTestCase {
     @MainActor
     private func assertCandidateCard(_ app: XCUIApplication) {
         let any = app.descendants(matching: .any)
-        XCTAssertTrue(any["result.placement"].exists)
-        let note = any["result.candidateNote"]
+        XCTAssertTrue(any["result.placement"].firstMatch.exists)
+        let note = any["result.candidateNote"].firstMatch
         XCTAssertTrue(note.exists, "the candidate note is missing")
         XCTAssertTrue(note.label.contains("couldn't confirm all the space a battery needs"), note.label)
         let lines = any.matching(NSPredicate(format: "identifier BEGINSWITH 'check.'"))
         XCTAssertEqual(lines.count, 0, "a passing check reached the card")
-        XCTAssertFalse(any["result.installerConfirms"].exists)
+        XCTAssertFalse(any["result.installerConfirms"].firstMatch.exists)
         XCTAssertEqual(app.buttons["action.showAR"].label, "See this spot on your wall")
         // Details' scope note says, truthfully, that a pass is "not ... confirmed clear": the sweep
         // leaves that one qualified sentence out, whether or not Details is open.
@@ -255,11 +255,13 @@ final class ProvisionalPlacementUITests: XCTestCase {
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result",
                                "-uiDemoResultFile", file] + textSize
         app.launch()
-        XCTAssertTrue(app.descendants(matching: .any)["screen.result"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.descendants(matching: .any)["screen.result"].firstMatch.waitForExistence(timeout: 15))
         return app
     }
 
     /// Scrolls until the element is inside the window, a third of the window at most per drag.
+    /// Lookups here take the first match: a DisclosureGroup's identifier ("result.details")
+    /// matches more than one element, and reading a frame needs exactly one.
     @MainActor
     private func scroll(to target: XCUIElement, in app: XCUIApplication) {
         let window = app.windows.firstMatch.frame
