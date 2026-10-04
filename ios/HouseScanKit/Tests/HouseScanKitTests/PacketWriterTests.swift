@@ -367,7 +367,9 @@ struct SyntheticPacket {
         #expect(Set(planes[1].keys) == ["id", "alignment", "pose", "extent_m"])
         let marks = try #require(json["marks"] as? [[String: Any]])
         #expect(Set(marks[0].keys) == ["id", "kind", "points", "t", "photo_ids"])
-        #expect(Set(marks[1].keys) == ["id", "kind", "points", "t", "side", "end_kind"])
+        // The left end is inferred: the flag, no mark time. The right end is the homeowner's.
+        #expect(Set(marks[1].keys) == ["id", "kind", "points", "side", "end_kind", "attrs"])
+        #expect(Set(marks[2].keys) == ["id", "kind", "points", "t", "side", "end_kind"])
         #expect((marks[3]["attrs"] as? [String: Bool]) == ["operable": true])
         let guidance = try #require(json["guidance"] as? [[String: Any]])
         #expect(Set(guidance[1].keys) == ["id", "kind", "origin", "message", "band", "span_m", "t_shown", "t_resolved", "outcome"])

@@ -130,16 +130,20 @@ import Testing
     /// The writer's own check: an inferred end with a time, or the flag on another kind of mark,
     /// is refused before anything is written.
     @Test func theWriterRefusesAnInferredEndWithATime() throws {
+        // Times after the synthetic capture's start, so only the rule under test can refuse.
+        let t = SyntheticPacket.start + 3
         var mark = try Self.end(.inferred)
-        mark.t = 3
+        mark.t = t
         let folder = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "hs-provenance-\(UUID())")
         defer { try? FileManager.default.removeItem(at: folder) }
         var writer = try PacketWriter(folder: folder, session: try SyntheticPacket().session)
-        #expect(throws: PacketError.self) { try writer.setMarks([mark]) }
+        #expect(throws: PacketError.invalidMark(id: "wall_end_right", reason: "an inferred wall end has no mark time: nobody marked it")) {
+            try writer.setMarks([mark])
+        }
         var meter = PacketMark.meter(id: "m")
         meter.inferred = true
-        #expect(throws: PacketError.self) { try writer.setMarks([meter]) }
-        #expect(throws: Never.self) { try writer.setMarks([try Self.end(.inferred), try Self.end(.marked(at: 3)).renamed("wall_end_left")]) }
+        #expect(throws: PacketError.invalidMark(id: "m", reason: "only a wall end can be inferred")) { try writer.setMarks([meter]) }
+        #expect(throws: Never.self) { try writer.setMarks([try Self.end(.inferred), try Self.end(.marked(at: t)).renamed("wall_end_left")]) }
     }
 }
 
