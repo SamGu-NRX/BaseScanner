@@ -103,7 +103,7 @@ final class PastEndRecoveryUITests: XCTestCase {
         let app = launch(["-uiDemoGap", "pastEnd", "-uiDemoCoaching", "tooDark"] + Self.largestText)
         let card = label(app, "instruction")
         XCTAssertTrue(card.contains("Try your flashlight"), "card reads: \(card)")
-        XCTAssertFalse(card.contains("flashlight"), "the coaching's note must fold under Details: \(card)")
+        XCTAssertFalse(card.contains("Try your phone's flashlight"), "the coaching's note must fold under Details: \(card)")
         let mark = app.buttons["action.markEnd"]
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable)

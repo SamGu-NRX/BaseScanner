@@ -101,7 +101,7 @@ final class WalkRecoveryUITests: XCTestCase {
         let app = launch(["-uiDemoPhase", "wallWalk", "-uiDemoMarkEnd", "-uiDemoCoaching", "tooDark"] + Self.largestText)
         let card = label(app, "instruction")
         XCTAssertTrue(card.contains("Try your flashlight"), "card reads: \(card)")
-        XCTAssertFalse(card.contains("flashlight"), "the coaching's note must fold under Details: \(card)")
+        XCTAssertFalse(card.contains("Try your phone's flashlight"), "the coaching's note must fold under Details: \(card)")
         let mark = element(app, "action.markEnd")
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable)
