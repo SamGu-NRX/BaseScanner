@@ -100,7 +100,7 @@ final class WalkRecoveryUITests: XCTestCase {
     func testCoachingOnTheFoldedEndCardKeepsTheCircleOpen() throws {
         let app = launch(["-uiDemoPhase", "wallWalk", "-uiDemoMarkEnd", "-uiDemoCoaching", "tooDark"] + Self.largestText)
         let card = label(app, "instruction")
-        XCTAssertTrue(card.contains("It's dark here"), "card reads: \(card)")
+        XCTAssertTrue(card.contains("Try your flashlight"), "card reads: \(card)")
         XCTAssertFalse(card.contains("flashlight"), "the coaching's note must fold under Details: \(card)")
         let mark = element(app, "action.markEnd")
         scrollIntoView(mark, in: app)

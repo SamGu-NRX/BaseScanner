@@ -252,6 +252,9 @@ enum ScanCopy {
     /// Over the walk's own prompt after "Done with this wall" was refused and the ends cleared
     /// (`ScanViewState.wallTooShort`).
     static let wallTooShort = "The ends were too close. Walk along the wall first."
+    /// `wallTooShort` on a card folded around the circle, as the walk's end can be when both ends
+    /// were cleared: two lines beside the refusal triangle, the rest under Details.
+    static let wallTooShortLead = "Walk the wall first"
 
     // MARK: Close-up
 
@@ -446,13 +449,14 @@ enum ScanCopy {
         return out
     }
 
-    /// Coaching in a few words, for a lead that must stay two lines beside its symbol at AX5.
+    /// Coaching in a few words, for a lead that must stay two lines beside its symbol at AX5: what
+    /// to do, since the symbol already says what is wrong and darkness can last a whole walk.
     static func coachingLead(_ coaching: Coaching) -> String {
         switch coaching {
         case .slowDown: "Slow down"
         case .needsTexture: "Find more texture"
-        case .tooDark: "It's dark here"
-        case .tooDarkToMeasure: "Too dark to measure"
+        case .tooDark: "Try your flashlight"
+        case .tooDarkToMeasure: "Try in daylight"
         case .holdSteady: "Hold steady"
         case .turnSlowly: "Turn more slowly"
         case .initializing, .relocalizing, .trackingLost, .pastWallEnd: ScanCopy.coaching(coaching).title

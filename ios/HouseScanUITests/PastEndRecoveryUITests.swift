@@ -102,7 +102,7 @@ final class PastEndRecoveryUITests: XCTestCase {
     func testCoachingOnAFoldedPastEndCardKeepsTheCircleOpen() throws {
         let app = launch(["-uiDemoGap", "pastEnd", "-uiDemoCoaching", "tooDark"] + Self.largestText)
         let card = label(app, "instruction")
-        XCTAssertTrue(card.contains("It's dark here"), "card reads: \(card)")
+        XCTAssertTrue(card.contains("Try your flashlight"), "card reads: \(card)")
         XCTAssertFalse(card.contains("flashlight"), "the coaching's note must fold under Details: \(card)")
         let mark = app.buttons["action.markEnd"]
         scrollIntoView(mark, in: app)
@@ -113,7 +113,7 @@ final class PastEndRecoveryUITests: XCTestCase {
         tapWhenReady(app.buttons["instruction.details"])
         let detail = element(app, "instruction.detail")
         XCTAssertTrue(detail.waitForExistence(timeout: 5))
-        for words in ["Try your phone's flashlight", "Keep walking past the right end", "If the wall stops sooner"] {
+        for words in ["It's dark here. Try your phone's flashlight", "Keep walking past the right end", "If the wall stops sooner"] {
             XCTAssertTrue(detail.label.contains(words), "Details must hold \"\(words)\": \(detail.label)")
         }
     }

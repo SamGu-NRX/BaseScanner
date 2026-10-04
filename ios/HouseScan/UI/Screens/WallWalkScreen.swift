@@ -87,7 +87,7 @@ struct WallWalkScreen: View {
         // Folded around the circle, ride-along coaching leads or opens Details instead of sitting
         // under the lead (`ScanCopy.foldedAroundCircle`).
         guard endAimFolds else { return stepCard }
-        return ScanCopy.foldedAroundCircle(stepCard, coaching: coaching, refused: state.endMarkRefusal != nil)
+        return ScanCopy.foldedAroundCircle(stepCard, coaching: coaching, refused: state.endMarkRefusal != nil || state.wallTooShort)
     }
 
     /// The card's words for the step, before folding around the circle (`instruction`).
@@ -111,7 +111,11 @@ struct WallWalkScreen: View {
         // Coaching about how the photos come out (the capture gate's, and too little texture)
         // rides along with the task (`ScanCopy.withCoaching`), and its symbol marks the card (`tone`).
         if state.wallTooShort {
-            return ScanCopy.withCoaching(Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title), coaching)
+            let step = ScanCopy.guidance(state.guidance).title
+            // Folded around the circle (the walk can ask for the end again after the too-close
+            // ends were cleared), the long title would cover it: the correction leads instead.
+            let folded = Instruction.Folded(title: ScanCopy.wallTooShortLead, detail: "\(ScanCopy.wallTooShort) \(step)")
+            return ScanCopy.withCoaching(Instruction(title: ScanCopy.wallTooShort, detail: step, folded: folded), coaching)
         }
         return ScanCopy.withCoaching(ScanCopy.guidance(state.guidance, hint: state.guidanceHint), coaching)
     }
