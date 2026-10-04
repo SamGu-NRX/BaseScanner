@@ -138,19 +138,24 @@ extension ScanEngine: ScanActions {
     }
 
     /// Marks a wall end during the walk, or, during a server past_end request, marks that
-    /// request's end again at wherever the wall is now seen to stop.
-    /// The end at `point`, or with no point at the circle in the middle of the view: the walk's
-    /// "Wall ends here" button. The button answers the card, which names a side, so on the walk
-    /// it marks only that side, only with the phone's place known, and only where the circle is
-    /// on the wall; otherwise the card says why (`EndMarkRefusal`, B-06). Before, each of those
-    /// did nothing, and aiming across the meter ended the other side. A tap at a point (the
-    /// autopilot's) marks the side it lands on, as before.
+    /// request's end again at wherever the wall really stops (B-12), nearer or farther than the
+    /// end the request cleared: that end only said how far the walk had seen.
+    /// The end at `point`, or with no point at the circle in the middle of the view: the
+    /// "Wall ends here" button. The button answers the card, which names a side, so it marks only
+    /// that side, only with the phone's place known, and only where the circle is on the wall;
+    /// otherwise the card says why (`EndMarkRefusal`, B-06). Before, each of those did nothing,
+    /// and aiming across the meter ended the other side. During a past_end request a tap at a
+    /// point (the autopilot's) goes through the same check from that point; on the walk it marks
+    /// the side it lands on, as before.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
-        guard state.phase == .wallWalk || (state.phase == .gapRequest && pastEndSide != nil),
+        guard state.phase == .wallWalk || askedEndSide != nil,
+              // During a request, once the end is marked its question is what is left to answer.
+              state.phase != .gapRequest || state.endQuestion == nil,
               let map = coverage, let frame = currentFrame else { return }
         let hit: WallPoint
-        if point == nil, state.phase == .wallWalk, case .markEnd(let asked) = state.guidance {
-            switch circleEnd(asked: asked, frame: frame, map: map) {
+        if let asked = askedEndSide, point == nil || state.phase == .gapRequest {
+            let pixel = point.map { frame.projection.imagePixel(forViewPoint: $0, in: viewSize) } ?? frame.camera.imageSize / 2
+            switch aimedEnd(asked: asked, pixel: pixel, frame: frame, map: map) {
             case .success(let found): hit = found
             case .failure(let refusal): return refuseEndMark(refusal)
             }
@@ -159,14 +164,22 @@ extension ScanEngine: ScanActions {
             hit = found
         }
         let side: WallSide = hit.s < 0 ? .left : .right
-        if state.phase == .gapRequest, side != pastEndSide { return }
+        // The walk checks the wall's length when it finishes ("Done with this wall"); a request
+        // settles without that step, so its end is checked here against the other end, which
+        // stays where it is.
+        if state.phase == .gapRequest, map.endWouldLeaveTooLittle(side.walk, at: hit.s) {
+            return refuseEndMark(.tooLittleWall)
+        }
         state.endMarkRefusal = nil
         // Unexplored until the homeowner says something blocks the wall there: an unanswered
         // question must not tell the server the usable wall stops at this point.
         state.endQuestion = side
         state.endQuestionLeavesOut = nil
         state.endQuestionLeavesOutSeen = false
-        setEnd(side, at: hit.s, kind: .unexplored)
+        setEnd(side, at: hit.s, kind: .unexplored, source: .homeowner)
+        if state.phase == .gapRequest {
+            RuntimeLog.engine.info("gap \(self.state.gap?.id ?? 0): the \(side.rawValue, privacy: .public) end marked again at s=\(hit.s)")
+        }
     }
 
     private func refuseEndMark(_ refusal: EndMarkRefusal) {
@@ -474,7 +487,9 @@ extension ScanEngine: ScanActions {
     }
 
     func skipGap() {
-        guard state.phase == .gapRequest else { return }
+        // With the end just marked, the end question answers the request; the screen hides this
+        // reply until it is answered.
+        guard state.phase == .gapRequest, state.endQuestion == nil else { return }
         // The card said the space ends short of the walk-out line (#164): the same answer, with
         // why in the log.
         if let ends = state.gap?.spaceEnds {
@@ -485,7 +500,7 @@ extension ScanEngine: ScanActions {
     }
 
     func showResultNow() {
-        guard state.phase == .gapRequest else { return }
+        guard state.phase == .gapRequest, state.endQuestion == nil else { return }
         stopGapRequests()
     }
 

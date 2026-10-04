@@ -39,18 +39,33 @@ performance.
    homeowner gave about it:
    - whether a wall end is a real end (something blocks it) or unexplored (it turns a corner,
      or no answer), which decides whether the server may reject for want of space;
+   - whether the homeowner marked a wall end ("Wall ends here") or the app inferred it from the
+     walk: where the walk reached after "Can't get there" or "The wall keeps going", or past the
+     ground a `past_end` request showed. An inferred end has the same place and kind as a marked
+     one, but nobody pointed at it, so it says where the scan stopped, not where the wall does;
    - whether a window opens, which the rules may use (whether a fixed window is exempt from the
      opening clearance is the rules' choice, not the app's);
    - which corner taps belong to the same door or window.
 
-   Proposal: `taps[].attrs` with `endKind` (`limit`, `unexplored`) and `operable`, and
-   `taps[].group` for taps that outline one object.
+   Proposal: `taps[].attrs` with `endKind` (`limit`, `unexplored`), `operable` and `inferred`,
+   and `taps[].group` for taps that outline one object.
+
+   The app's own packet 1.1 (the `scan.zip` behind Share scan) already writes the provenance: a
+   wall end the homeowner marked has its mark time `t`; an inferred one has no `t` and
+   `attrs.inferred: true`. A missing `t` alone never means the homeowner marked it.
 4. **The guidance log.** Every request the homeowner was shown (walk, tilt to the ground, mark
    an end, close-up, a gap the phone or the server asked for), when, and its outcome: `met`,
    `skipped`, `cannot_reach`, `superseded` or `unresolved`. Today "I can't get there" never
    reaches the server, so the server can ask for the same unreachable view again. Proposal:
    `guidance[]` with `id`, `kind`, `origin` (`phone`, `server`), `message`, optional `band` and
    `span`, `tShown`, `tResolved` and `outcome`.
+
+   For the wall's ends, as the app's packet 1.1 records them: `mark_end` is `met` only when the
+   homeowner marked that end. "The wall keeps going" and "Can't get there" close it as
+   `cannot_reach`, because the end lay beyond where the homeowner got, and the end placed there
+   is inferred. `gap_past_end` is `met` both when views past the end settle it and when the
+   homeowner marks the end again; the wall end's provenance tells them apart. "I can't get
+   there" on it is `cannot_reach`, and the end it had cleared comes back as it was.
 5. **Depth between keyframes** (from S6's live map, draft PR #21). Keyframes are kept about every
    0.5 m, but the phone fuses depth at about 10 Hz to decide what was seen. With keyframe depth
    alone the server cannot rebuild that decision. Proposal: optional `depthFrames[]` with `t`,
