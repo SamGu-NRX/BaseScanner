@@ -76,7 +76,7 @@ final class PastEndRecoveryUITests: XCTestCase {
     }
 
     /// "Wall ends here" asks the walk's end question; it replaces the request and its decline
-    /// until answered, and the answer settles the request, which goes on to the check.
+    /// until answered, and "Something blocks it" settles the request, which goes on to the check.
     @MainActor
     func testMarkingTheEndAsksWhatIsThereAndSettlesTheRequest() throws {
         try question(textSize: [], name: "gapRequest-pastEnd-question")
@@ -106,6 +106,22 @@ final class PastEndRecoveryUITests: XCTestCase {
         scrollIntoView(blocked, in: app)
         tapWhenReady(blocked)
         XCTAssertTrue(element(app, "screen.uploading").waitForExistence(timeout: 10), "the answer must settle the request")
+    }
+
+    /// "It turns a corner" can't settle a past-end request, which can't follow the corner: no
+    /// check mark, no "Got it, thanks", straight on to the check, as "I can't get there" goes.
+    @MainActor
+    func testACornerAtThePastEndGoesOnWithoutSettlingIt() throws {
+        let app = launch(["-uiDemoGap", "pastEnd"])
+        let mark = app.buttons["action.markEnd"]
+        scrollIntoView(mark, in: app)
+        tapWhenReady(mark)
+        let corner = app.buttons["action.endCorner"]
+        XCTAssertTrue(corner.waitForExistence(timeout: 5))
+        scrollIntoView(corner, in: app)
+        tapWhenReady(corner)
+        XCTAssertFalse(label(app, "instruction").contains("Got it, thanks"), "a corner settled the request")
+        XCTAssertTrue(element(app, "screen.uploading").waitForExistence(timeout: 10), "the corner must move on to the check")
     }
 
     /// Only a past-end request offers the end: the phone's own request and the server's other
@@ -182,6 +198,40 @@ final class PastEndRecoveryUITests: XCTestCase {
         attach(run)
     }
 
+    /// The check asks to walk past the left end. The autopilot marks it again nearer and answers
+    /// "It turns a corner", which the request can't follow. The next answer asks again to walk
+    /// past the left end, now from the corner, and also for ground on the right. The repeat is not
+    /// raised; the ground request is. The corner stays the homeowner's unexplored end, nothing past
+    /// it is reported, and the request closed cannot_reach, not met.
+    @MainActor
+    func testACornerAtThePastEndIsNotAskedForAgainOnTheRealEngine() throws {
+        let run = try runReplay(markPastEnd: true, corner: true)
+        let mark = try XCTUnwrap(run.pastEndMark, "the autopilot left no past-end-mark.json")
+        let marked = try XCTUnwrap(mark["s"] as? Double), cleared = try XCTUnwrap(mark["cleared_s"] as? Double)
+        XCTAssertEqual(mark["side"] as? String, "left")
+        XCTAssertGreaterThan(marked, cleared, "the end was meant to come nearer than the cleared one")
+
+        // The first upload, one after the corner, one after the ground request.
+        XCTAssertGreaterThanOrEqual(run.scenes.count, 3, run.log)
+        let last = try XCTUnwrap(run.scenes.last)
+        XCTAssertEqual(try Self.endKind(last, "left"), "unexplored")
+        XCTAssertEqual(try Self.leftEndFeet(last), marked * Self.feetPerMeter, accuracy: 0.2, "the scene's left bound is the corner")
+        XCTAssertTrue(try Self.observedLeftEdges(last, band: nil).allSatisfy { $0 >= marked * Self.feetPerMeter - 0.05 }, "coverage claimed past the corner")
+
+        let packet = try XCTUnwrap(run.packet, "no packet-marks-guidance.json")
+        let left = try XCTUnwrap(Self.wallEnd(packet, "left"))
+        XCTAssertNotNil(left["t"], "the corner is the homeowner's mark, with its time")
+        XCTAssertNil((left["attrs"] as? [String: Any])?["inferred"], "the corner is not inferred")
+        XCTAssertEqual(left["end_kind"] as? String, "unexplored")
+        let pastEnd = Self.guidance(packet, kind: "gap_past_end")
+        XCTAssertEqual(pastEnd.count, 1, "the repeated past_end was raised again: \(pastEnd)")
+        XCTAssertEqual(pastEnd.first?["outcome"] as? String, "cannot_reach", "\(pastEnd)")
+        // The phone's own requests are gap_band too; the server's are the ones in its answers.
+        let serverBand = Self.guidance(packet, kind: "gap_band").filter { $0["origin"] as? String == "server" }
+        XCTAssertEqual(serverBand.count, 1, "the ground request in the same answer was not raised: \(serverBand)")
+        attach(run)
+    }
+
     private struct ReplayRun {
         var scenes: [[String: Any]]
         var packet: [String: Any]?
@@ -194,8 +244,11 @@ final class PastEndRecoveryUITests: XCTestCase {
     /// bundled sample, whose missing evidence asks to walk past the left end; later answers drop
     /// that item, so the request is raised once. Returns every scene uploaded, in order, and the
     /// packet projection and mark record the autopilot leaves at the result.
+    ///
+    /// With `corner`, the autopilot answers "It turns a corner", and the second answer asks again
+    /// to walk past the left end together with the sample's ground request on the right.
     @MainActor
-    private func runReplay(markPastEnd: Bool) throws -> ReplayRun {
+    private func runReplay(markPastEnd: Bool, corner: Bool = false) throws -> ReplayRun {
         let sample = String(decoding: try Data(contentsOf: UploadRecoveryUITests.sampleResult), as: UTF8.self)
         let zeros = String(repeating: "0", count: 64)
         XCTAssertTrue(sample.contains("\"input_sha256\": \"\(zeros)\""))
@@ -208,6 +261,10 @@ final class PastEndRecoveryUITests: XCTestCase {
         XCTAssertEqual(pastEnd.count, 1, "the sample no longer asks to walk past the left end")
         answer["missing_evidence"] = pastEnd
         let onlyPastEnd = String(decoding: try JSONSerialization.data(withJSONObject: answer, options: [.sortedKeys]), as: UTF8.self)
+        let ground = missing.filter { $0["kind"] as? String == "band" && $0["band"] as? String == "ground" }
+        XCTAssertEqual(ground.count, 1, "the sample no longer asks for ground")
+        answer["missing_evidence"] = pastEnd + ground
+        let pastEndAgain = String(decoding: try JSONSerialization.data(withJSONObject: answer, options: [.sortedKeys]), as: UTF8.self)
         answer["missing_evidence"] = [[String: Any]]()
         let nothingMissing = String(decoding: try JSONSerialization.data(withJSONObject: answer, options: [.sortedKeys]), as: UTF8.self)
         XCTAssertTrue(onlyPastEnd.contains("\"input_sha256\":\"\(zeros)\""), "the binding placeholder moved")
@@ -222,7 +279,11 @@ final class PastEndRecoveryUITests: XCTestCase {
             try Data().write(to: gate.appending(path: phase))
         }
         let server = GateServer(gate: gate) { body, index in
-            let template = index == 0 ? onlyPastEnd : nothingMissing
+            let template = switch index {
+            case 0: onlyPastEnd
+            case 1 where corner: pastEndAgain
+            default: nothingMissing
+            }
             return Data(template.replacingOccurrences(of: zeros, with: UploadRecoveryUITests.sha256(body)).utf8)
         }
         defer { server.stop() }
@@ -231,7 +292,7 @@ final class PastEndRecoveryUITests: XCTestCase {
         app.launchArguments = [
             "-replay", FullFlowUITests.fixture, "-autopilot", "-autopilotHold", "1.0", "-autopilotGate", gate.path,
             "-practiceMeter", "NO", "-serverURL", "http://placement.invalid", "-answersFromGate",
-        ] + (markPastEnd ? ["-autopilotMarkPastEnd"] : [])
+        ] + (markPastEnd ? ["-autopilotMarkPastEnd"] : []) + (corner ? ["-autopilotPastEndCorner"] : [])
         app.launch()
         defer { app.terminate() }
         let any = app.descendants(matching: .any)

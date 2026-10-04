@@ -146,7 +146,8 @@ struct GapRequestScreen: View {
     private var asking: Bool { state.overheadQuestion && state.gap?.isSatisfied != true }
 
     /// The end question after "Wall ends here" on a past_end request: it replaces the request,
-    /// "I can't get there" and "Show my result" until answered, and the answer settles the request.
+    /// "I can't get there" and "Show my result" until answered. An end the wall stops at settles the
+    /// request; a corner, which the request can't follow, moves on without settling it.
     private var askingEnd: Bool {
         guard let side = state.endQuestion, let gap = state.gap else { return false }
         return gap.pastEndSide == side && !gap.isSatisfied

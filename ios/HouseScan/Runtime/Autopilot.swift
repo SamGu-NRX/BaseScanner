@@ -478,7 +478,8 @@ final class Autopilot {
 
     /// `-autopilotMarkPastEnd`: marks a past_end request's end again, 60% of the way from the meter
     /// to the end the request cleared, and answers "Something blocks it", so the wall comes out
-    /// shorter and its end a limit. The mark is a tap where the replay shows that place on the
+    /// shorter and its end a limit; with `-autopilotPastEndCorner`, "It turns a corner", which
+    /// leaves that end unexplored and the request cannot_reach. The mark is a tap where the replay shows that place on the
     /// wall, not the circle in the middle of the view: it goes through the same `EndAim` check
     /// from that point (`ScanEngine.markWallEnd`), but no camera was aimed. Where it marked goes
     /// to the gate folder as `past-end-mark.json` (side, s in meters), for the UI test.
@@ -509,8 +510,9 @@ final class Autopilot {
             try? JSONSerialization.data(withJSONObject: record).write(to: gate.appending(path: "past-end-mark.json"))
         }
         await pause(hold)
-        engine.answerWallEnd(turnsCorner: false)
-        log("answered the \(side.rawValue) end: something blocks it")
+        let corner = engine.options.autopilotPastEndCorner
+        engine.answerWallEnd(turnsCorner: corner)
+        log("answered the \(side.rawValue) end: \(corner ? "it turns a corner" : "something blocks it")")
     }
 
     /// Waits while the engine plays the replay's frames for the current request. A replay shows

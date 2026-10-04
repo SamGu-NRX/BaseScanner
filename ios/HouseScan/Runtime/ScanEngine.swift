@@ -128,10 +128,11 @@ final class ScanEngine {
     /// new one (`keepOverheadView`); counting keyframes would not do, since the walk keeps them too.
     private var overheadViewsAtGapStart = 0
     /// Requests the homeowner skipped or answered with something overhead: they go to installer
-    /// review, and the result doesn't offer them as captures again.
+    /// review, and the result doesn't offer them as captures again. With them, the past_end
+    /// request from a corner a request couldn't follow (`skipCurrentGap(deferring:)`).
     private(set) var skippedGaps: [GapPlan] = []
     /// The side of a server past_end request being captured: that end was cleared, and marking
-    /// it again settles the request (see `markWallEnd`).
+    /// it again as where the wall stops settles the request (see `markWallEnd`, `answerWallEnd`).
     var pastEndSide: WallSide?
     /// The end the past_end request cleared: where it was, its kind and its stamp (marked, with
     /// when, or inferred), put back or moved on when the request ends without it marked again
@@ -1393,7 +1394,7 @@ final class ScanEngine {
             store.keyframes.count > keyframesAtGapStart
         }
         // Not while the end question is up: the homeowner marked the end and is saying what is
-        // there, and that answer settles the request (`settlePastEnd`).
+        // there, and that answer closes the request (`answerWallEnd`).
         let satisfied = gapPlanner.isSatisfied(plan, map) && fresh && state.endQuestion == nil
         state.guidance = .gap
         let center = (plan.span.lowerBound + plan.span.upperBound) / 2
@@ -1988,8 +1989,9 @@ final class ScanEngine {
         startUpload()
     }
 
-    /// The past_end request's end was marked again and its question answered: the request is
-    /// settled, so the scan goes to the upload like a closed gap.
+    /// The past_end request's end was marked again and the homeowner said the wall stops there:
+    /// the request is settled, so the scan goes to the upload like a closed gap. A corner doesn't
+    /// settle it (`answerWallEnd`).
     func settlePastEnd() {
         guard state.phase == .gapRequest, var request = state.gap, !request.isSatisfied else { return }
         resolveGuidance(.met)
@@ -2037,7 +2039,14 @@ final class ScanEngine {
     /// overhead, or "Show my result"): recorded for installer review, then on to the upload. The
     /// answer that follows raises the next item it lists, never this one again
     /// (`automaticGapQueue`); only "Show my result" (`stopGapRequests`) ends the requests.
-    func skipCurrentGap(because reason: String = "the homeowner can't get there", refused: Bool = true) {
+    ///
+    /// `deferring` is a request this one stands for that nobody was shown: the past_end request
+    /// from the corner the homeowner just marked (`answerWallEnd`), which this request can't
+    /// follow. Recorded with the skipped requests only, so the next answer doesn't raise it again
+    /// (`GapPlan.asksForSameView`); it logs no guidance and marks no cells, since no view was
+    /// asked for or taken there. A past_end from a different end later, and other requests, can
+    /// still be raised.
+    func skipCurrentGap(because reason: String = "the homeowner can't get there", refused: Bool = true, deferring: GapPlan? = nil) {
         guard let plan = gapPlan else { return }
         // Something overhead is an answer: the request goes to review without its view.
         resolveGuidance(refused ? .cannotReach : .skipped)
@@ -2045,6 +2054,7 @@ final class ScanEngine {
         // nothing about the band the strip draws.
         if plan.need == .cells { coverage?.markSkipped(plan.band, plan.span) }
         skippedGaps.append(plan)
+        if let deferring { skippedGaps.append(deferring) }
         publishCoverage()
         RuntimeLog.engine.info("gap \(self.gapCounter) left for installer review: \(reason, privacy: .public)")
         afterGapResolved()

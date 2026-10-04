@@ -26,6 +26,8 @@ import OSLog
 ///   nearer than the end the request cleared, with a tap where the replay shows that place, and
 ///   answers "Something blocks it" (`Autopilot.markPastEnd`). Without it the autopilot plays the
 ///   request's frames and says "I can't get there" when they don't settle it.
+/// - `-autopilotPastEndCorner`: with `-autopilotMarkPastEnd`, the autopilot answers "It turns a
+///   corner" instead, which a request can't follow (`ScanEngine.answerWallEnd`).
 /// - `-autopilotCannotCheck`: the autopilot answers the first spot check "I can't check this
 ///   area" instead of "It's clear". It can't be combined with `-autopilotSomethingThere`.
 /// - `-sampleResultAfterSpotAnswer <path>` (debug builds only): with the bundled sample, the
@@ -59,6 +61,7 @@ struct LaunchOptions: Equatable {
     var autopilotSomethingThere = false
     var autopilotCannotCheck = false
     var autopilotMarkPastEnd = false
+    var autopilotPastEndCorner = false
     var sampleResultAfterSpotAnswer: URL?
     var simulateAppStore = false
     var injectGroundRise: Float?
@@ -81,6 +84,8 @@ struct LaunchOptions: Equatable {
         autopilotSomethingThere = arguments.contains("-autopilotSomethingThere")
         autopilotCannotCheck = arguments.contains("-autopilotCannotCheck")
         autopilotMarkPastEnd = arguments.contains("-autopilotMarkPastEnd")
+        autopilotPastEndCorner = arguments.contains("-autopilotPastEndCorner")
+        precondition(!autopilotPastEndCorner || autopilotMarkPastEnd, "-autopilotPastEndCorner answers the end -autopilotMarkPastEnd marks; pass both")
         precondition(!(autopilotSomethingThere && autopilotCannotCheck), "-autopilotSomethingThere and -autopilotCannotCheck each choose the first spot answer; pass one")
         #if DEBUG
         sampleResultAfterSpotAnswer = value(after: "-sampleResultAfterSpotAnswer").map { URL(fileURLWithPath: $0) }

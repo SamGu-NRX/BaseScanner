@@ -932,6 +932,12 @@ final class DemoEngine: ScanActions {
         state.endQuestionLeavesOut = nil
         state.endQuestionLeavesOutSeen = false
         if state.phase == .gapRequest, var gap = state.gap, gap.pastEndSide == side {
+            // A corner the request can't follow: no check mark, straight on to the upload, as
+            // `ScanEngine.skipCurrentGap` does.
+            if turnsCorner {
+                enterUpload()
+                return
+            }
             // The end marked again settles the request, as `ScanEngine.settlePastEnd` does; the
             // check runs again after the request's check mark has been seen.
             gap.isSatisfied = true

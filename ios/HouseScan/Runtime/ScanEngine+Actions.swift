@@ -193,7 +193,24 @@ extension ScanEngine: ScanActions {
             nextWallSide = side
             nextWallRefusal = nil
         }
-        if state.phase == .gapRequest, side == pastEndSide { settlePastEnd() }
+        if state.phase == .gapRequest, side == pastEndSide {
+            if turnsCorner {
+                // The wall goes on round the corner, so its end stays unexplored, and the server
+                // settles an unexplored end only by views past it (server/README.md, "unexplored").
+                // This request can't follow a corner; the walk does that (`markNextWall`). So it
+                // closes as cannot_reach, never met: the homeowner's corner stays where they
+                // marked it (`PastEndSettlement.keepMarked`), and nothing past it counts as seen.
+                // The next answer can ask again to walk past this side, now planned from the
+                // corner: the same request this one couldn't serve, so it is recorded as skipped
+                // too. Only from this end; a past_end from a different end later is a new view.
+                let end = side == .left ? coverage?.leftEnd : coverage?.rightEnd
+                skipCurrentGap(
+                    because: "the wall turns a corner at the homeowner's end, and this request can't survey past a corner",
+                    deferring: end.map { gapPlanner.pastEndPlan(side: side.walk, end: $0) })
+            } else {
+                settlePastEnd()
+            }
+        }
         if state.phase == .wallWalk, let frame = currentFrame {
             resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
         }
