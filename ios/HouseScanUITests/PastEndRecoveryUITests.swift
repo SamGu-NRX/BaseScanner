@@ -41,7 +41,7 @@ final class PastEndRecoveryUITests: XCTestCase {
         XCTAssertTrue(mark.waitForExistence(timeout: 5))
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable, "Wall ends here can't be reached")
-        assertEndCircleOpen(app, covers: Self.endCovers, "left past-end, AX5")
+        assertEndCircleOpen(app, folded: true, reply: "action.skipGap", covers: Self.endCovers, "left past-end, AX5")
         snap(app, "gapRequest-pastEndLeft-AX5")
     }
 
@@ -68,7 +68,7 @@ final class PastEndRecoveryUITests: XCTestCase {
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable, "Wall ends here can't be reached")
         // Where "Wall ends here" can be pressed, the circle it marks at is in view.
-        assertEndCircleOpen(app, covers: Self.endCovers, name)
+        assertEndCircleOpen(app, folded: folded, reply: "action.skipGap", covers: Self.endCovers, name)
         snap(app, name)
         guard folded else { return }
 
@@ -87,13 +87,57 @@ final class PastEndRecoveryUITests: XCTestCase {
         XCTAssertTrue(waitForAbsence(detail), "Details must close again")
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable)
-        assertEndCircleOpen(app, covers: Self.endCovers, "\(name), Details closed")
+        assertEndCircleOpen(app, folded: true, reply: "action.skipGap", covers: Self.endCovers, "\(name), Details closed")
         // The decline moved from the card to the actions, and stays within reach.
         let decline = app.buttons["action.skipGap"]
         scrollIntoView(decline, in: app)
         XCTAssertTrue(decline.isHittable, "I can't get there can't be reached")
         XCTAssertEqual(decline.label, "I can't get there")
         XCTAssertGreaterThan(decline.frame.minY, mark.frame.maxY - 0.5, "the decline sits under Wall ends here")
+    }
+
+    /// Coaching riding along leads the folded card in a few words, and its whole note opens
+    /// Details: under the lead, the dark note's lines reached the circle.
+    @MainActor
+    func testCoachingOnAFoldedPastEndCardKeepsTheCircleOpen() throws {
+        let app = launch(["-uiDemoGap", "pastEnd", "-uiDemoCoaching", "tooDark"] + Self.largestText)
+        let card = label(app, "instruction")
+        XCTAssertTrue(card.contains("It's dark here"), "card reads: \(card)")
+        XCTAssertFalse(card.contains("flashlight"), "the coaching's note must fold under Details: \(card)")
+        let mark = app.buttons["action.markEnd"]
+        scrollIntoView(mark, in: app)
+        XCTAssertTrue(mark.isHittable)
+        assertEndCircleOpen(app, folded: true, reply: "action.skipGap", covers: Self.endCovers, "coached past-end, AX5")
+        snap(app, "gapRequest-pastEnd-tooDark-AX5")
+        scrollToTop(app)
+        tapWhenReady(app.buttons["instruction.details"])
+        let detail = element(app, "instruction.detail")
+        XCTAssertTrue(detail.waitForExistence(timeout: 5))
+        for words in ["Try your phone's flashlight", "Keep walking past the right end", "If the wall stops sooner"] {
+            XCTAssertTrue(detail.label.contains(words), "Details must hold \"\(words)\": \(detail.label)")
+        }
+    }
+
+    /// The circle on the other side of the meter, on either side: the folded card leads with
+    /// which end to face, and the circle stays open.
+    @MainActor
+    func testTheOtherSideRefusalFoldsOnBothSides() throws {
+        for (gap, asked, landed) in [("pastEnd", "right", "left"), ("pastEndLeft", "left", "right")] {
+            let app = launch(["-uiDemoGap", gap, "-uiDemoEndMarkOtherSide"] + Self.largestText)
+            let card = label(app, "instruction")
+            XCTAssertTrue(card.contains("Face the \(asked) end"), "\(gap): card reads: \(card)")
+            let mark = app.buttons["action.markEnd"]
+            scrollIntoView(mark, in: app)
+            XCTAssertTrue(mark.isHittable)
+            assertEndCircleOpen(app, folded: true, reply: "action.skipGap", covers: Self.endCovers, "\(gap) other side, AX5")
+            snap(app, "gapRequest-\(gap)-otherSide-AX5")
+            scrollToTop(app)
+            tapWhenReady(app.buttons["instruction.details"])
+            let detail = element(app, "instruction.detail")
+            XCTAssertTrue(detail.waitForExistence(timeout: 5))
+            XCTAssertTrue(detail.label.contains("That's the \(landed) side of your meter. Turn to the \(asked) end"), "\(gap): Details reads: \(detail.label)")
+            app.terminate()
+        }
     }
 
     /// What may cover the circle: the actions and the card's reply. The card itself is checked by
@@ -129,7 +173,7 @@ final class PastEndRecoveryUITests: XCTestCase {
         let mark = app.buttons["action.markEnd"]
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable)
-        assertEndCircleOpen(app, covers: Self.endCovers, name)
+        assertEndCircleOpen(app, folded: folded, reply: "action.skipGap", covers: Self.endCovers, name)
         snap(app, name)
         tapWhenReady(mark)
         card = label(app, "instruction")

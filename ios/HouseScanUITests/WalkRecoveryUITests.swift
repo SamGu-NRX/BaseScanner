@@ -16,7 +16,7 @@ final class WalkRecoveryUITests: XCTestCase {
     func testTheEndCardAnswersThatTheWallKeepsGoing() throws {
         let app = launch(["-uiDemoPhase", "wallWalk", "-uiDemoMarkEnd"])
         XCTAssertTrue(label(app, "instruction").contains("Is this the right end of the wall?"))
-        assertEndCircleOpen(app, covers: Self.endCovers, "walk mark-end")
+        assertEndCircleOpen(app, folded: false, reply: "action.cannotAccess", covers: Self.endCovers, "walk mark-end")
         snap(app, "wallWalk-markEnd-keepsGoing")
         XCTAssertTrue(element(app, "action.markEnd").exists, "Wall ends here must stay on offer")
         let keepsGoing = reply(app, "The wall keeps going")
@@ -40,7 +40,7 @@ final class WalkRecoveryUITests: XCTestCase {
         XCTAssertTrue(card.contains("Aim it at the wall where it stops or turns"), "card reads: \(card)")
         XCTAssertTrue(element(app, "action.markEnd").exists)
         XCTAssertTrue(reply(app, "The wall keeps going").waitForExistence(timeout: 5))
-        assertEndCircleOpen(app, covers: Self.endCovers, "walk mark-end refused")
+        assertEndCircleOpen(app, folded: false, reply: "action.cannotAccess", covers: Self.endCovers, "walk mark-end refused")
     }
 
     /// At AX5 the card covered the circle "Wall ends here" marks at (CI run 37165788075,
@@ -56,7 +56,7 @@ final class WalkRecoveryUITests: XCTestCase {
         let mark = element(app, "action.markEnd")
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable, "Wall ends here can't be reached")
-        assertEndCircleOpen(app, covers: Self.endCovers, "walk mark-end, AX5")
+        assertEndCircleOpen(app, folded: true, reply: "action.cannotAccess", covers: Self.endCovers, "walk mark-end, AX5")
         snap(app, "wallWalk-markEnd-AX5")
 
         scrollToTop(app)
@@ -72,7 +72,7 @@ final class WalkRecoveryUITests: XCTestCase {
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: detail)
         XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 5), .completed, "Details must close again")
         scrollIntoView(mark, in: app)
-        assertEndCircleOpen(app, covers: Self.endCovers, "walk mark-end, AX5, Details closed")
+        assertEndCircleOpen(app, folded: true, reply: "action.cannotAccess", covers: Self.endCovers, "walk mark-end, AX5, Details closed")
 
         let keepsGoing = reply(app, "The wall keeps going")
         XCTAssertTrue(keepsGoing.waitForExistence(timeout: 5), "the wall that goes on still needs its answer")
@@ -90,8 +90,23 @@ final class WalkRecoveryUITests: XCTestCase {
         let mark = element(app, "action.markEnd")
         scrollIntoView(mark, in: app)
         XCTAssertTrue(mark.isHittable)
-        assertEndCircleOpen(app, covers: Self.endCovers, "walk mark-end refused, AX5")
+        assertEndCircleOpen(app, folded: true, reply: "action.cannotAccess", covers: Self.endCovers, "walk mark-end refused, AX5")
         snap(app, "wallWalk-markEnd-refused-AX5")
+    }
+
+    /// The walk's end with coaching riding along: the coaching leads in a few words, its note
+    /// opens Details, and the circle stays open.
+    @MainActor
+    func testCoachingOnTheFoldedEndCardKeepsTheCircleOpen() throws {
+        let app = launch(["-uiDemoPhase", "wallWalk", "-uiDemoMarkEnd", "-uiDemoCoaching", "tooDark"] + Self.largestText)
+        let card = label(app, "instruction")
+        XCTAssertTrue(card.contains("It's dark here"), "card reads: \(card)")
+        XCTAssertFalse(card.contains("flashlight"), "the coaching's note must fold under Details: \(card)")
+        let mark = element(app, "action.markEnd")
+        scrollIntoView(mark, in: app)
+        XCTAssertTrue(mark.isHittable)
+        assertEndCircleOpen(app, folded: true, reply: "action.cannotAccess", covers: Self.endCovers, "coached walk mark-end, AX5")
+        snap(app, "wallWalk-markEnd-tooDark-AX5")
     }
 
     private static let largestText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]

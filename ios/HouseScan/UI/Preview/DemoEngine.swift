@@ -32,6 +32,9 @@ final class DemoEngine: ScanActions {
     /// `-uiDemoEndMarkRefusal`: "Wall ends here" was pressed with the circle off the wall, and the
     /// demo's circle stays off it, so pressing again refuses again.
     private let endMarkRefused: Bool
+    /// `-uiDemoEndMarkOtherSide`: as `-uiDemoEndMarkRefusal`, but the circle is on the wall on
+    /// the meter's other side (`EndMarkRefusal.otherSide`).
+    private let endMarkOtherSide: Bool
     /// The tilt-up step was answered or skipped.
     private var tiltUpSettled = false
     /// Walk-script ticks spent on the tilt-up step, standing in for the phone being tilted up.
@@ -89,7 +92,8 @@ final class DemoEngine: ScanActions {
         rejectUpload = arguments.contains("-uiDemoRejected")
         unusableAnswers = arguments.contains("-uiDemoUnusableAnswer") ? max(value("-uiDemoUnusableAnswer").flatMap(Int.init) ?? 1, 1) : 0
         gapKind = value("-uiDemoGap")
-        endMarkRefused = arguments.contains("-uiDemoEndMarkRefusal")
+        endMarkOtherSide = arguments.contains("-uiDemoEndMarkOtherSide")
+        endMarkRefused = arguments.contains("-uiDemoEndMarkRefusal") || endMarkOtherSide
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
         state.isReplay = true
         state.tracking = .normal
@@ -129,9 +133,9 @@ final class DemoEngine: ScanActions {
             reachedRight = demoRightEnd
             refreshCoverage()
             refreshGuidance()
-            if arguments.contains("-uiDemoEndMarkRefusal") {
-                // As in the real engine, a circle off the wall has no end preview (`circleEnd`).
-                state.endMarkRefusal = .noWall
+            if endMarkRefused {
+                // As in the real engine, a refused circle has no end preview (`circleEnd`).
+                state.endMarkRefusal = demoRefusal(asked: .right)
                 state.endPreview = nil
             }
         }
@@ -444,8 +448,8 @@ final class DemoEngine: ScanActions {
             state.target = DemoScene.wall.world(s: end + sign * 0.3, height: 0, out: 0.5)
             state.path = DemoScene.path(toward: end + sign * 0.3)
             if endMarkRefused {
-                // As in the real engine, a circle off the wall has no end preview (`circleEnd`).
-                state.endMarkRefusal = .noWall
+                // As in the real engine, a refused circle has no end preview (`circleEnd`).
+                state.endMarkRefusal = demoRefusal(asked: side)
                 state.endPreview = nil
             } else {
                 // The circle on the wall a little before the old end: where the wall really stops.
@@ -889,10 +893,16 @@ final class DemoEngine: ScanActions {
         }
     }
 
+    /// Why the demo's "Wall ends here" marks nothing: the circle off the wall, or on the wall on
+    /// the other side of the meter from the end `asked` (`-uiDemoEndMarkOtherSide`).
+    private func demoRefusal(asked: WallSide) -> EndMarkRefusal {
+        endMarkOtherSide ? .otherSide(asked == .right ? .left : .right) : .noWall
+    }
+
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
         if state.phase == .gapRequest, let side = state.gap?.pastEndSide, state.gap?.isSatisfied == false, state.endQuestion == nil {
             if endMarkRefused {
-                state.endMarkRefusal = .noWall
+                state.endMarkRefusal = demoRefusal(asked: side)
                 state.endPreview = nil
                 return
             }

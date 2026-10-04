@@ -401,7 +401,7 @@ enum ScanCopy {
         case .otherSide(let landed):
             Instruction(
                 title: "That's the \(landed.rawValue) side of your meter", detail: "Turn to the \(side.rawValue) end, then tap Wall ends here.",
-                folded: endAimFold("Turn to the \(side.rawValue) end", "That's the \(landed.rawValue) side of your meter. Turn to the \(side.rawValue) end, then tap Wall ends here."))
+                folded: endAimFold("Face the \(side.rawValue) end", "That's the \(landed.rawValue) side of your meter. Turn to the \(side.rawValue) end, then tap Wall ends here."))
         case .trackingNotReady:
             Instruction(
                 title: "One moment, your phone is still finding its place", detail: "Then aim at the \(side.rawValue) end.",
@@ -428,6 +428,35 @@ enum ScanCopy {
     /// `WallWalkScreen` move the reply to their actions at those sizes).
     static func endAimFold(_ lead: String, _ everything: String) -> Instruction.Folded {
         Instruction.Folded(title: lead, detail: everything)
+    }
+
+    /// A folded end-aim card with coaching riding along (`withCoaching`). Its note under the lead
+    /// would reach the circle again: the long dark note is several lines at AX5, and even one
+    /// line uses the room above the circle. So the coaching leads instead, in a few words beside
+    /// its symbol, and its whole note opens Details. With a refusal, the refusal's correction
+    /// keeps the lead and the coaching opens Details. Only for a card that folds; coaching that
+    /// replaces the task isn't folded at all.
+    static func foldedAroundCircle(_ card: Instruction, coaching: Coaching?, refused: Bool) -> Instruction {
+        guard let coaching, !coachingReplacesTask(coaching), var folded = card.folded else { return card }
+        var out = card
+        out.note = nil
+        folded.detail = "\(coachingNote(coaching)) \(folded.detail)"
+        if !refused { folded.title = coachingLead(coaching) }
+        out.folded = folded
+        return out
+    }
+
+    /// Coaching in a few words, for a lead that must stay two lines beside its symbol at AX5.
+    static func coachingLead(_ coaching: Coaching) -> String {
+        switch coaching {
+        case .slowDown: "Slow down"
+        case .needsTexture: "Find more texture"
+        case .tooDark: "It's dark here"
+        case .tooDarkToMeasure: "Too dark to measure"
+        case .holdSteady: "Hold steady"
+        case .turnSlowly: "Turn more slowly"
+        case .initializing, .relocalizing, .trackingLost, .pastWallEnd: ScanCopy.coaching(coaching).title
+        }
     }
 
     static func nextWallRefusal(_ refusal: NextWallRefusal) -> Instruction {

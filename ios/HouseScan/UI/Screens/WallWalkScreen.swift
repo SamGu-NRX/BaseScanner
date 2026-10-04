@@ -69,7 +69,10 @@ struct WallWalkScreen: View {
                         )
                     }
                 }
-                .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: controlsKey)
+                // Under Reduce Motion the controls swap at once: the swap changes the stack's height
+                // (the end's step adds its reply at the largest sizes), and an eased resize still
+                // moves the map under it.
+                .animation(reduceMotion ? nil : Motion.settle, value: controlsKey)
             }
         }
         .animation(.easeOut(duration: 0.2), value: showsMeterPhoto)
@@ -81,6 +84,14 @@ struct WallWalkScreen: View {
     // MARK: Instruction
 
     private var instruction: Instruction {
+        // Folded around the circle, ride-along coaching leads or opens Details instead of sitting
+        // under the lead (`ScanCopy.foldedAroundCircle`).
+        guard endAimFolds else { return stepCard }
+        return ScanCopy.foldedAroundCircle(stepCard, coaching: coaching, refused: state.endMarkRefusal != nil)
+    }
+
+    /// The card's words for the step, before folding around the circle (`instruction`).
+    private var stepCard: Instruction {
         if let marking = state.marking {
             let prompt = ScanCopy.markingPrompt(marking)
             if let refusal = marking.refusal {
@@ -352,15 +363,9 @@ struct WallWalkScreen: View {
                     .transition(.opacity)
                     if endAimFolds, let copy = ScanCopy.reply(for: state.guidance) {
                         // The card's reply, moved here while the card folds around the circle.
-                        Button {
-                            actions.cannotAccessArea()
-                        } label: {
-                            Text(copy.title)
-                                .spansStack(stacksActions)
-                        }
-                        .buttonStyle(.secondary)
-                        .accessibilityHint(copy.hint)
-                        .accessibilityIdentifier("action.cannotAccess")
+                        MovedReplyButton(
+                            title: copy.title, hint: copy.hint, identifier: "action.cannotAccess",
+                            task: replyTask, perform: { actions.cannotAccessArea() })
                         .transition(.opacity)
                     }
                 case .walking where offersEndHere:

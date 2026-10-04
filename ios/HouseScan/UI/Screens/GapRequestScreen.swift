@@ -180,17 +180,13 @@ struct GapRequestScreen: View {
 
     /// "I can't get there" among the actions, under "Wall ends here", while the card folds around
     /// the circle (`endAimFolds`): the same words, hint and action as the card's reply.
-    private var declineButton: some View {
-        Button {
-            actions.skipGap()
-        } label: {
-            Text("I can't get there")
-                .frame(maxWidth: .infinity)
+    @ViewBuilder private var declineButton: some View {
+        if let gap = state.gap {
+            MovedReplyButton(
+                title: "I can't get there", hint: skipHint, identifier: "action.skipGap",
+                task: ScanCopy.gapTask(gap), perform: { actions.skipGap() })
+            .transition(.opacity)
         }
-        .buttonStyle(.secondary)
-        .accessibilityHint(skipHint)
-        .accessibilityIdentifier("action.skipGap")
-        .transition(.opacity)
     }
 
     /// At the largest text sizes while "Wall ends here" is offered, the card folds to a two-line
@@ -259,9 +255,12 @@ struct GapRequestScreen: View {
     /// thanks" for as long as it did (field test 4.1, run 3).
     private var instruction: Instruction {
         var card = requestCard
-        // Folded around the circle, "One more view to finish" leaves the card's top (`endAimFolds`)
+        guard endAimFolds else { return card }
+        // Folded around the circle, ride-along coaching leads or opens Details
+        // (`ScanCopy.foldedAroundCircle`), and "One more view to finish" leaves the card's top
         // and leads the words under Details.
-        if endAimFolds, followUps > 0, let folded = card.folded {
+        card = ScanCopy.foldedAroundCircle(card, coaching: coaching, refused: refusal != nil)
+        if followUps > 0, let folded = card.folded {
             card.folded?.detail = "\(ScanCopy.followUp(remaining: followUps)). \(folded.detail)"
         }
         return card
