@@ -112,16 +112,22 @@ final class ProvisionalPlacementUITests: XCTestCase {
         XCTAssertTrue(any["screen.result"].firstMatch.waitForExistence(timeout: 10), "Done didn't return to the result")
     }
 
-    /// The camera between the folded card and Done is at least the chrome's least open window
-    /// (`CameraChromeLayout.minCameraWindow`, 180 pt), measured from the elements' frames, not
-    /// inferred from Done being hittable.
+    /// The open camera between the folded card and Done, measured from the elements' frames and
+    /// clipped to the window, is at least the chrome's least open camera window
+    /// (`CameraChromeLayout.minCameraWindow`, 180 pt). The card's bottom is its Details label
+    /// plus the card's padding under it (8 pt, `InstructionCard.details`), so the area isn't
+    /// overstated; Done must be on screen and hittable first.
     @MainActor
-    private func assertOpenCamera(below card: XCUIElement, above done: XCUIElement, in app: XCUIApplication, _ state: String,
+    private func assertOpenCamera(below details: XCUIElement, above done: XCUIElement, in app: XCUIApplication, _ state: String,
                                   file: StaticString = #filePath, line: UInt = #line) {
-        let open = done.frame.minY - card.frame.maxY
-        XCTAssertGreaterThanOrEqual(open, 180, "\(state): \(open) pt of camera between the card (\(card.frame)) and Done (\(done.frame))",
+        XCTAssertTrue(done.isHittable, "\(state): Done isn't reachable", file: file, line: line)
+        let window = app.windows.firstMatch.frame
+        let top = max(details.frame.maxY + 8, window.minY)
+        let bottom = min(done.frame.minY, window.maxY)
+        let open = bottom - top
+        XCTAssertGreaterThanOrEqual(open, 180, "\(state): \(open) pt of camera between the card (bottom \(top)) and Done (top \(bottom))",
                                     file: file, line: line)
-        let note = XCTAttachment(string: "\(state): open camera \(open) pt, card bottom \(card.frame.maxY), Done top \(done.frame.minY), window \(app.windows.firstMatch.frame)")
+        let note = XCTAttachment(string: "\(state): open camera \(open) pt, card bottom \(top), Done top \(bottom), window \(window)")
         note.name = "resultAR-open-camera-\(state)"
         note.lifetime = .keepAlways
         add(note)
