@@ -563,6 +563,10 @@ final class ScanEngine {
             if state.tracking == .normal { breakWalkedPath(because: "tracking left normal") }
             state.tracking = frame.tracking
             live?.setResultVisible(frame.tracking == .normal)
+            // The circle's end checks this tracking (`aimedEnd`), and a pose-only frame returns
+            // below before guidance republishes the preview, so the tape would keep an end that
+            // "Wall ends here" now refuses (review of #213).
+            publishEndPreview()
         }
         noteMeterAnchor(frame)
         // A frame made before the meter was anchored again carries the old anchor's pose. First,
