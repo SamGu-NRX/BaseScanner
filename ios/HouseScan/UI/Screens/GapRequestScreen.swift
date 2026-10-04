@@ -32,12 +32,16 @@ struct GapRequestScreen: View {
                 SavedMeterPhoto(image: meterPhoto)
                     .transition(.opacity)
             }
-            // The end lands under the circle, as on the walk's "Is this the right end?".
-            if offersEndMark {
+            // The end lands under the circle, as on the walk's "Is this the right end?". It fades
+            // with "Wall ends here" on the same spring, so the pair comes and goes together;
+            // scoped to the circle, so nothing else on the camera animates with it. Under Reduce
+            // Motion only its opacity changes, briefly: nothing moves.
+            if state.gap?.pastEndSide != nil {
                 Reticle(diameter: 56)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
-                    .transition(.opacity)
+                    .opacity(offersEndMark ? 1 : 0)
+                    .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: offersEndMark)
             }
             if state.gap?.isSatisfied == true {
                 SuccessBadge()
@@ -70,13 +74,20 @@ struct GapRequestScreen: View {
                         OverheadAnswers(actions: actions)
                             .transition(.opacity)
                     }
-                    if askingEnd {
-                        EndQuestionAnswers(actions: actions)
-                            .transition(.opacity)
+                    // The end's controls fade on their own: the rows below them move into place at
+                    // once rather than sliding with the stack, and under Reduce Motion nothing
+                    // animates.
+                    VStack(spacing: 10) {
+                        if askingEnd {
+                            EndQuestionAnswers(actions: actions)
+                                .transition(.opacity)
+                        }
+                        if offersEndMark {
+                            markEndButton
+                        }
                     }
-                    if offersEndMark {
-                        markEndButton
-                    }
+                    .animation(reduceMotion ? nil : Motion.settle, value: askingEnd)
+                    .animation(reduceMotion ? nil : Motion.settle, value: offersEndMark)
                     if !typeSize.isAccessibilitySize {
                         showResult
                     }
@@ -99,7 +110,7 @@ struct GapRequestScreen: View {
                     }
                 }
                 .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: asking)
-                .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: askingEnd)
+
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.pin, value: state.gap?.isSatisfied)

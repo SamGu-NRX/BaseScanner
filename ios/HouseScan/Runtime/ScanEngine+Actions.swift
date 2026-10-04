@@ -164,12 +164,6 @@ extension ScanEngine: ScanActions {
             hit = found
         }
         let side: WallSide = hit.s < 0 ? .left : .right
-        // The walk checks the wall's length when it finishes ("Done with this wall"); a request
-        // settles without that step, so its end is checked here against the other end, which
-        // stays where it is.
-        if state.phase == .gapRequest, map.endWouldLeaveTooLittle(side.walk, at: hit.s) {
-            return refuseEndMark(.tooLittleWall)
-        }
         state.endMarkRefusal = nil
         // Unexplored until the homeowner says something blocks the wall there: an unanswered
         // question must not tell the server the usable wall stops at this point.

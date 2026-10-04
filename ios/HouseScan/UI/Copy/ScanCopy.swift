@@ -398,7 +398,11 @@ enum ScanCopy {
         case .trackingNotReady:
             Instruction(title: "One moment, your phone is still finding its place", detail: "Then aim at the \(side.rawValue) end.")
         case .tooLittleWall:
-            Instruction(title: "That leaves too little wall for a battery", detail: "Aim where the wall really stops, or tap I can't get there.")
+            // Says what the app can't do, not where to aim: the homeowner must not be nudged to
+            // mark an end farther than the wall really goes. "I can't get there" stays the way on.
+            // The app's own minimum (`WallFrame.minWallLength`), not a measured installation rule:
+            // no reason is given for it, and rule distances belong to the server.
+            Instruction(title: "House Scan can't use a wall that short", detail: "If this is where the wall ends, tap I can't get there to continue.")
         }
     }
 

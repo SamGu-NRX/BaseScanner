@@ -567,8 +567,9 @@ enum EndMarkRefusal: Error, Equatable, Sendable {
     case otherSide(WallSide)
     /// Tracking isn't normal, as for a feature mark (`MarkRefusal.trackingNotReady`).
     case trackingNotReady
-    /// During a past_end request: an end there would leave less wall than a battery needs
-    /// (`CoverageMap.endWouldLeaveTooLittle`), the walk's own minimum (`WallFrame.minWallLength`).
+    /// During a past_end request: an end there would leave less wall than the walk's minimum
+    /// (`CoverageMap.endWouldLeaveTooLittle`, `WallFrame.minWallLength`), which the app can't use.
+    /// Decided in `aimedEnd`, so the preview and the button agree.
     case tooLittleWall
 }
 
